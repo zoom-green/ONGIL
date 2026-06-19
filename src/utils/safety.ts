@@ -50,24 +50,28 @@ export function calcSafetyScore(
   let spotScore = 0;
   let lightScore = 0;
   let roadScore = 0;
-  let cctvCount = 0;
-  let safeSpotCount = 0;
+
+  // 동일 CCTV·거점이 여러 노드에 걸쳐 중복 카운트되지 않도록 Set으로 추적
+  const seenCctv = new Set<number>();
+  const seenSpot = new Set<number>();
 
   const sampled = nodes.filter((_, i) => i % 3 === 0);
 
   for (const node of sampled) {
-    const nearbyCctv = cctvList.filter((c) => distanceMeters(node, c) <= CCTV_RADIUS_M).length;
-    cctvScore += nearbyCctv * wCctv;
-    cctvCount += nearbyCctv;
+    cctvList.forEach((c, idx) => {
+      if (distanceMeters(node, c) <= CCTV_RADIUS_M) {
+        cctvScore += wCctv; // 점수는 밀도 기반으로 노드마다 누적
+        seenCctv.add(idx);  // 표시용 개수는 고유 인덱스만
+      }
+    });
 
-    for (const spot of safeSpots) {
+    safeSpots.forEach((spot, idx) => {
       if (distanceMeters(node, spot) <= SPOT_RADIUS_M) {
-        // 야간에는 nightWeight 적용 (편의점↑, 카페/음식점↓, 경찰/소방↑)
         const w = night ? (spot.nightWeight ?? spot.weight ?? 1) : (spot.weight ?? 1);
         spotScore += w;
-        safeSpotCount++;
+        seenSpot.add(idx);
       }
-    }
+    });
 
     for (const light of streetlights) {
       if (distanceMeters(node, light) <= LIGHT_RADIUS_M) {
@@ -78,6 +82,9 @@ export function calcSafetyScore(
     // 큰길(로/대로) 구간 보너스
     if (node.mainRoad) roadScore += wRoad;
   }
+
+  const cctvCount = seenCctv.size;
+  const safeSpotCount = seenSpot.size;
 
   const len = routeLengthMeters(nodes);
   const score = ((cctvScore + spotScore + lightScore + roadScore) / len) * 1000;

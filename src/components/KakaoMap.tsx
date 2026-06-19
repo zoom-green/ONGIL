@@ -73,6 +73,7 @@ export default function KakaoMap({
     kakao.maps.event.addListener(map, 'click', (mouseEvent: any) => {
       const latlng: kakao.maps.LatLng = mouseEvent.latLng;
       const geocoder = new kakao.maps.services.Geocoder();
+      // @ts-expect-error kakao types incomplete — coord2Address exists at runtime
       geocoder.coord2Address(
         latlng.getLng(),
         latlng.getLat(),
