@@ -24,18 +24,23 @@ export async function sendGuardianSMSAll(phones: string[], message: string): Pro
 
 export async function sendGuardianSMS(phone: string, message: string): Promise<boolean> {
   const sms = await getSmsPlugin();
-  if (!sms) {
-    // 웹 환경 — SMS 전송 불가
-    console.warn('[SMS] 네이티브 앱에서만 SMS 전송 가능');
-    return false;
+
+  // 네이티브 앱(APK)이면 플러그인으로 자동 전송
+  if (sms) {
+    try {
+      await sms.send({ numbers: [phone.replace(/[^0-9]/g, '')], text: message });
+      return true;
+    } catch (e) {
+      console.error('[SMS] 전송 실패:', e);
+      return false;
+    }
   }
-  try {
-    await sms.send({ numbers: [phone.replace(/[^0-9]/g, '')], text: message });
-    return true;
-  } catch (e) {
-    console.error('[SMS] 전송 실패:', e);
-    return false;
-  }
+
+  // 웹 브라우저(모바일)이면 SMS URI로 메시지 앱 열기
+  // → 삼성 메시지 앱이 열리고 내용이 자동 입력됨 (전송 버튼은 사용자가 누름)
+  const number = phone.replace(/[^0-9]/g, '');
+  window.open(`sms:${number}?body=${encodeURIComponent(message)}`, '_self');
+  return true;
 }
 
 export function buildGuardianMessage(
