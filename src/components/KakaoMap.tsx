@@ -173,12 +173,12 @@ export default function KakaoMap({
     };
   }, []);
 
-  // 범죄주의구간 WMS 오버레이 — bounds 변경 시 이미지 갱신
+  // 범죄주의구간 WMS 오버레이 — 10등급(최고 밀도)만 필터링해 표시
+  const crimeReqRef = useRef(0);
   useEffect(() => {
     const map = mapRef.current;
     const container = containerRef.current;
 
-    // 비활성화 시 오버레이 제거
     if (!showCrimeOverlay || !crimeWmsKey) {
       if (crimeImgRef.current) {
         crimeImgRef.current.remove();
@@ -187,8 +187,28 @@ export default function KakaoMap({
       return;
     }
 
+    // 오버레이 img 최초 1회 생성
+    if (!crimeImgRef.current) {
+      const img = document.createElement('img');
+      img.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;' +
+        'opacity:0;pointer-events:none;z-index:10;';
+      container!.appendChild(img);
+      crimeImgRef.current = img;
+    }
+
+    // 이미지 소스 교체 후 로드 완료 시 표시
+    const applyImage = (src: string, opacity: number) => {
+      const el = crimeImgRef.current;
+      if (!el) return;
+      el.style.opacity = '0';
+      el.onload = () => { if (crimeImgRef.current) crimeImgRef.current.style.opacity = String(opacity); };
+      el.src = src;
+    };
+
     const refreshImage = () => {
       if (!map || !container) return;
+      const reqId = ++crimeReqRef.current;
       // @ts-expect-error kakao types incomplete
       const bounds = map.getBounds();
       const sw = bounds.getSouthWest();
@@ -198,23 +218,45 @@ export default function KakaoMap({
       const bbox = `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
       const url = `https://safemap.go.kr/openapi2/IF_0087_WMS?serviceKey=${crimeWmsKey}&srs=EPSG:4326&bbox=${bbox}&format=image/png&width=${w}&height=${h}&transparent=TRUE`;
 
-      if (!crimeImgRef.current) {
-        const img = document.createElement('img');
-        img.style.cssText =
-          'position:absolute;top:0;left:0;width:100%;height:100%;' +
-          'opacity:0.45;pointer-events:none;z-index:10;';
-        container.appendChild(img);
-        crimeImgRef.current = img;
-      }
-      crimeImgRef.current.src = url;
+      // Canvas로 10등급 픽셀(#bd0026 = rgb(189,0,38))만 남기고 나머지 투명화
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { applyImage(url, 0.45); return; }
+
+      const tmp = new Image();
+      tmp.crossOrigin = 'anonymous';
+      tmp.onload = () => {
+        if (reqId !== crimeReqRef.current) return; // 오래된 요청 무시
+        canvas.width = tmp.width;
+        canvas.height = tmp.height;
+        ctx.drawImage(tmp, 0, 0);
+        try {
+          const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const px = d.data;
+          for (let i = 0; i < px.length; i += 4) {
+            if (px[i + 3] === 0) continue;
+            // 10등급 rgb(189,0,38), 9등급 rgb(211,26,35) → G≤18로 구분
+            const is10 = px[i] >= 155 && px[i] <= 210 && px[i + 1] <= 18 && px[i + 2] >= 15 && px[i + 2] <= 65;
+            px[i + 3] = is10 ? 220 : 0;
+          }
+          ctx.putImageData(d, 0, 0);
+          applyImage(canvas.toDataURL('image/png'), 1.0);
+        } catch {
+          // CORS 차단 시 전체 등급 fallback
+          applyImage(url, 0.45);
+        }
+      };
+      tmp.onerror = () => { if (reqId === crimeReqRef.current) applyImage(url, 0.45); };
+      tmp.src = url;
     };
 
     refreshImage();
 
-    // 지도 이동/줌 후 300ms 디바운스로 갱신
+    // 지도 이동/줌: 즉시 숨겨서 어긋남 방지, 350ms 후 새 좌표로 재요청
     const onBoundsChange = () => {
+      if (crimeImgRef.current) crimeImgRef.current.style.opacity = '0';
       if (crimeTimerRef.current) clearTimeout(crimeTimerRef.current);
-      crimeTimerRef.current = setTimeout(refreshImage, 300);
+      crimeTimerRef.current = setTimeout(refreshImage, 350);
     };
     // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'bounds_changed', onBoundsChange);
