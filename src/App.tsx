@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import KakaoMap from './components/KakaoMap';
 import SearchBar from './components/SearchBar';
 import RouteCard from './components/RouteCard';
-import CompanionScreen from './components/CompanionScreen';
+import CompanionWrapper from './components/CompanionWrapper';
+import type { CompanionDisplayMode } from './components/CompanionWrapper';
 import EmergencyScreen from './components/EmergencyScreen';
+import { useUserLocation } from './hooks/useUserLocation';
 import type { LatLng, Place, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint } from './types';
 import { fetchPedestrianRoutes } from './utils/tmap';
 import { loadCctvData } from './utils/cctv';
@@ -55,9 +57,13 @@ export default function App() {
   const [showOverlays, setShowOverlays] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [locationReady, setLocationReady] = useState(false);
   const [mapClickInfo, setMapClickInfo] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [companionActive, setCompanionActive] = useState(false);
+
+  // 실시간 GPS 추적 훅 — watchPosition 기반, heading 포함
+  const { location: userLocation, ready: locationReady } = useUserLocation();
+  const [companionDisplay, setCompanionDisplay] = useState<CompanionDisplayMode | 'hidden'>('hidden');
+  const [companionAiMode, setCompanionAiMode] = useState<'full' | 'companion_only'>('companion_only');
+  const companionActive = companionDisplay !== 'hidden';
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [emergencyTrigger, setEmergencyTrigger] = useState<'sos' | 'shake'>('shake');
   const lastSmsLocRef = useRef<LatLng | null>(null);
@@ -93,29 +99,20 @@ export default function App() {
     return () => { stopped = true; clearInterval(timer); };
   }, []);
 
-  // GPS 실시간 위치 추적
+  // userLocation → gpsOrigin 동기화 (첫 GPS 확정 시 지도 중심도 이동)
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsOrigin(GANGNEUNG_CENTER);
-      setLocationReady(true);
-      return;
-    }
-    const onSuccess = (pos: GeolocationPosition) => {
-      const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (userLocation) {
+      const loc: LatLng = { lat: userLocation.lat, lng: userLocation.lng };
       setGpsOrigin(loc);
-      setLocationReady(true);
-    };
-    const onError = () => {
-      setGpsOrigin((prev) => prev ?? GANGNEUNG_CENTER);
-      setLocationReady(true);
-    };
-    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
-      maximumAge: 15000,
-      timeout: 10000,
-    });
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+      // 지도 중심이 아직 강릉 기본값이면 첫 GPS 좌표로 스냅
+      setUserPos((prev) =>
+        prev.lat === GANGNEUNG_CENTER.lat && prev.lng === GANGNEUNG_CENTER.lng ? loc : prev
+      );
+    } else if (locationReady && !userLocation) {
+      // GPS 권한 거부 등 실패 → 강릉 센터 폴백
+      setGpsOrigin(GANGNEUNG_CENTER);
+    }
+  }, [userLocation, locationReady]);
 
   // CCTV + 가로등 데이터 로드
   useEffect(() => {
@@ -345,6 +342,7 @@ export default function App() {
                   onSelect={handleOriginSelect}
                   placeholder={manualOrigin ? manualOrigin.name : '현재 위치 (GPS)'}
                   defaultValue={manualOrigin?.name ?? ''}
+                  userPosition={gpsOrigin}
                 />
               </div>
               {manualOrigin && (
@@ -366,6 +364,7 @@ export default function App() {
                   onSelect={handleDestinationSelect}
                   placeholder="어디로 갈까요?"
                   defaultValue={destination?.name ?? ''}
+                  userPosition={gpsOrigin}
                 />
               </div>
             </div>
@@ -383,18 +382,6 @@ export default function App() {
         />
       )}
 
-      {/* AI 동행 화면 (전체 오버레이) */}
-      {companionActive && (
-        <CompanionScreen
-          onEnd={() => setCompanionActive(false)}
-          onEmergency={() => { setCompanionActive(false); setEmergencyTrigger('sos'); setEmergencyActive(true); }}
-          destination={destination?.name}
-          guardianPhones={guardianPhones}
-          currentLocation={gpsOrigin}
-          routeNodes={sampledNodes}
-          routeType={activeRoute}
-        />
-      )}
 
       {/* 보호자 연락처 설정 모달 */}
       {showGuardianModal && (
@@ -419,6 +406,7 @@ export default function App() {
           streetlights={showOverlays ? displayStreetlights : []}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
+          userLocation={userLocation}
         />
 
         {/* 지도 클릭 시 출발지/도착지 설정 바텀시트 */}
@@ -500,24 +488,24 @@ export default function App() {
         </div>
 
         {/* AI 동행 시작 버튼 (지도 우하단 플로팅) */}
-        {!loading && (
+        {!loading && !companionActive && (
           <button
-            onClick={() => { if (safeRoute) setCompanionActive(true); }}
+            onClick={() => {
+              setCompanionAiMode(safeRoute ? 'full' : 'companion_only');
+              setCompanionDisplay('fullscreen');
+            }}
             style={{
               position: 'absolute', bottom: '20px', right: '16px', zIndex: 15,
-              background: safeRoute
-                ? 'linear-gradient(135deg, #7c3aed, #4f46e5)'
-                : 'rgba(100,116,139,0.7)',
+              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
               color: '#fff', border: 'none', borderRadius: '24px',
               padding: '12px 18px', fontSize: '14px', fontWeight: 700,
-              cursor: safeRoute ? 'pointer' : 'not-allowed',
-              opacity: safeRoute ? 1 : 0.7,
-              boxShadow: safeRoute ? '0 4px 20px rgba(124,58,237,0.5)' : 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
               display: 'flex', alignItems: 'center', gap: '6px',
               fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
             }}
           >
-            {safeRoute ? '👩 AI 동행 시작' : '👩 경로 설정 후 이용'}
+            {safeRoute ? '👩 AI 동행 시작' : '👩 AI 동행만 시작'}
           </button>
         )}
 
@@ -529,8 +517,24 @@ export default function App() {
         )}
       </div>
 
-      {/* 경로 카드 패널 */}
-      {step === 'routes' && !loading && (
+      {/* AI 동행 래퍼 — 세션 내내 마운트 유지, 풀↔미니 전환 시 훅은 살아있음 */}
+      {companionDisplay !== 'hidden' && (
+        <CompanionWrapper
+          mode={companionAiMode}
+          displayMode={companionDisplay}
+          onDisplayModeChange={setCompanionDisplay}
+          onEnd={() => setCompanionDisplay('hidden')}
+          onEmergency={() => { setCompanionDisplay('hidden'); setEmergencyTrigger('sos'); setEmergencyActive(true); }}
+          destination={destination?.name}
+          guardianPhones={guardianPhones}
+          currentLocation={gpsOrigin}
+          routeNodes={sampledNodes}
+          routeType={activeRoute}
+        />
+      )}
+
+      {/* 경로 카드 패널 — 동행 중에는 숨김 */}
+      {step === 'routes' && !loading && companionDisplay === 'hidden' && (
         <div style={{ background: '#fff', padding: '16px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
           {error ? (
             <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>⚠️ {error}</div>
@@ -540,8 +544,20 @@ export default function App() {
                 📍 {destination?.name}까지의 경로
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <RouteCard type="safe" route={safeRoute} active={activeRoute === 'safe'} onClick={() => setActiveRoute('safe')} />
-                {fastRoute && <RouteCard type="fast" route={fastRoute} active={activeRoute === 'fast'} onClick={() => setActiveRoute('fast')} />}
+                <RouteCard
+                  type="safe"
+                  route={safeRoute}
+                  active={activeRoute === 'safe'}
+                  onClick={() => setActiveRoute('safe')}
+                />
+                {fastRoute && (
+                  <RouteCard
+                    type="fast"
+                    route={fastRoute}
+                    active={activeRoute === 'fast'}
+                    onClick={() => setActiveRoute('fast')}
+                  />
+                )}
               </div>
               {showOverlays && (
                 <div style={{ display: 'flex', gap: '10px', marginTop: '12px', padding: '10px 12px', background: '#F8FAFC', borderRadius: '10px', flexWrap: 'wrap' }}>

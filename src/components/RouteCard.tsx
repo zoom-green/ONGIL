@@ -8,7 +8,7 @@ interface Props {
 }
 
 function formatTime(seconds: number): string {
-  const m = Math.round(seconds / 60);
+  const m = Math.ceil(seconds / 60);
   if (m < 60) return `${m}분`;
   return `${Math.floor(m / 60)}시간 ${m % 60}분`;
 }
@@ -89,7 +89,14 @@ export default function RouteCard({ type, route, active, onClick }: Props) {
             </div>
           </div>
         )}
+
+        {!isSafe && (
+          <div style={{ marginLeft: 'auto', fontSize: '10px', color: '#9CA3AF', textAlign: 'right' }}>
+            T-map 기준
+          </div>
+        )}
       </div>
+
     </div>
   );
 }

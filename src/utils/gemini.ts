@@ -7,10 +7,11 @@ export interface GeminiMessage {
 
 export interface LocationContext {
   address: string;
-  destination: string;
-  routeType: string;
-  minutesRemaining: number;
-  progressPercent: number;
+  mode: 'full' | 'companion_only';
+  destination?: string;       // full 모드에서만 사용
+  routeType?: string;
+  minutesRemaining?: number;
+  progressPercent?: number;
   isDeviated: boolean;
   isNight: boolean;
 }
@@ -50,16 +51,14 @@ export async function generateCompanionReply(
   const now = new Date();
   const timeStr = `${now.getHours()}시 ${now.getMinutes()}분`;
 
+  const situationInfo = ctx.mode === 'companion_only'
+    ? `사용자는 지금 야간에 도보로 이동 중입니다. 특정 목적지는 알 수 없지만 안심하고 걸을 수 있게 자연스럽게 대화를 이어가 주세요.\n현재 시간: ${timeStr}\n현재 위치: ${ctx.address}`
+    : `목적지: ${ctx.destination ?? '미상'}\n선택한 경로: ${ctx.routeType ?? '안심길'}\n예상 남은 시간: ${ctx.minutesRemaining ?? 0}분\n현재 진행률: ${ctx.progressPercent ?? 0}%\n현재 시간: ${timeStr}\n현재 위치: ${ctx.address}${ctx.isDeviated ? '\n경고: 사용자가 경로에서 벗어난 상태임. 자연스럽게 물어볼 것.' : ''}`;
+
   const systemText = `${COMPANION_PROMPT}
 
 [현재 상황 정보 — 대화에 자연스럽게 활용]
-- 목적지: ${ctx.destination}
-- 선택한 경로: ${ctx.routeType}
-- 예상 남은 시간: ${ctx.minutesRemaining}분
-- 현재 진행률: ${ctx.progressPercent}%
-- 현재 시간: ${timeStr}
-- 현재 위치: ${ctx.address}
-${ctx.isDeviated ? '경고: 사용자가 경로에서 벗어난 상태임. 자연스럽게 물어볼 것.' : ''}`;
+${situationInfo}`;
 
   const contents: GeminiMessage[] = [
     ...history,

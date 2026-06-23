@@ -28,6 +28,7 @@ async function callTmapPedestrian(
     resCoordType: 'WGS84GEO',
     startName: '출발지',
     endName: '목적지',
+    searchOption: '0', // 최적 경로
   };
 
   if (passList) {

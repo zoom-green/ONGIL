@@ -34,6 +34,7 @@ function createAlarm(): () => void {
 export default function EmergencyScreen({ guardianPhones, currentLocation, onClose, trigger = 'shake' }: Props) {
   const [countdown, setCountdown] = useState(5);
   const [triggered, setTriggered] = useState(false);
+  const [smsSent, setSmsSent] = useState(false);
   const triggeredRef = useRef(false);
   const stopAlarmRef = useRef<() => void>(() => {});
 
@@ -43,47 +44,41 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
     ? `https://maps.google.com/?q=${currentLocation.lat},${currentLocation.lng}`
     : '위치 확인 중';
 
-  // 알람 시작 (SMS는 아직 미발송)
+  const smsMsg = `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
+
   useEffect(() => {
     stopAlarmRef.current = createAlarm();
     return () => { stopAlarmRef.current(); };
   }, []);
 
-  // SMS 발송 + 112 다이얼러 열기 (한 번만 실행)
+  // 보호자 SMS 발송 (화면은 유지하고 백그라운드 발송)
+  const sendSMS = useCallback(() => {
+    if (smsSent) return;
+    setSmsSent(true);
+    sendGuardianSMSAll(validGuardians, smsMsg);
+  }, [smsSent, validGuardians, smsMsg]);
+
+  // trigger 실행: 알람 중단 + SMS 발송 + 화면 전환
   const doTrigger = useCallback(() => {
     if (triggeredRef.current) return;
     triggeredRef.current = true;
     setTriggered(true);
-
-    // 보호자 SMS 발송
-    const msg = `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
-    sendGuardianSMSAll(validGuardians, msg);
-
-    // 112 다이얼러 열기
-    window.location.href = 'tel:112';
-  }, [mapsLink, validGuardians]);
+    stopAlarmRef.current();
+    sendGuardianSMSAll(validGuardians, smsMsg);
+    setSmsSent(true);
+  }, [validGuardians, smsMsg]);
 
   // 5초 카운트다운
   useEffect(() => {
     if (triggered) return;
-    if (countdown <= 0) {
-      doTrigger();
-      return;
-    }
+    if (countdown <= 0) { doTrigger(); return; }
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown, triggered, doTrigger]);
 
-  // 취소: 아무것도 안 함 (SMS 미발송, 112 미연결)
   const handleCancel = () => {
     stopAlarmRef.current();
     onClose();
-  };
-
-  // 즉시 신고: 알람 즉시 중단 + SMS + 112
-  const handleImmediate = () => {
-    stopAlarmRef.current();
-    doTrigger();
   };
 
   return (
@@ -92,87 +87,134 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
       background: '#7F1D1D',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '56px 24px 48px',
+      padding: '52px 20px 40px',
       fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
-      animation: 'emergency-flash 0.5s ease-in-out 3',
+      animation: triggered ? 'none' : 'emergency-flash 0.5s ease-in-out 3',
       overflowY: 'auto',
     }}>
 
       {/* 상단 */}
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '64px', marginBottom: '12px' }}>🚨</div>
-        <div style={{ fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-          긴급 신고
+      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+        <div style={{ fontSize: '56px', marginBottom: '10px' }}>🚨</div>
+        <div style={{ fontSize: '24px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
+          {triggered ? '신고 완료' : '긴급 신고'}
         </div>
-        <div style={{ fontSize: '14px', color: '#FCA5A5', marginTop: '6px' }}>
+        <div style={{ fontSize: '13px', color: '#FCA5A5', marginTop: '5px' }}>
           {trigger === 'sos' ? 'SOS 버튼을 눌렀어요' : '핸드폰을 세게 흔들었어요'}
         </div>
         {!triggered && (
-          <div style={{ fontSize: '12px', color: '#FCD34D', marginTop: '6px' }}>
-            취소하지 않으면 5초 후 112에 자동 신고돼요
-          </div>
-        )}
-        {triggered && validGuardians.length > 0 && (
-          <div style={{ fontSize: '12px', color: '#86EFAC', marginTop: '6px' }}>
-            ✅ 보호자 {validGuardians.length}명에게 위치 전송 완료
-          </div>
-        )}
-        {triggered && validGuardians.length === 0 && (
-          <div style={{ fontSize: '12px', color: '#FCD34D', marginTop: '6px' }}>
-            ⚠️ 보호자 미설정 — SMS 미전송
+          <div style={{ fontSize: '12px', color: '#FCD34D', marginTop: '5px' }}>
+            취소하지 않으면 5초 후 자동 신고돼요
           </div>
         )}
       </div>
 
-      {/* 중앙: 카운트다운 + 위치 */}
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-        <div style={{
-          width: '120px', height: '120px', borderRadius: '50%',
-          background: triggered ? '#166534' : 'rgba(255,255,255,0.15)',
-          border: `3px solid ${triggered ? '#86EFAC' : 'rgba(255,255,255,0.4)'}`,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.4s',
-        }}>
-          {triggered ? (
-            <div style={{ fontSize: '13px', color: '#86EFAC', fontWeight: 800, textAlign: 'center', lineHeight: 1.4, padding: '0 8px' }}>
-              112<br />연결 중...
+      {/* 중앙 */}
+      {!triggered ? (
+        /* 카운트다운 */
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+          <div style={{
+            width: '120px', height: '120px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.15)',
+            border: '3px solid rgba(255,255,255,0.4)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{ fontSize: '48px', fontWeight: 900, color: '#fff', lineHeight: 1 }}>{countdown}</div>
+            <div style={{ fontSize: '11px', color: '#FCA5A5', marginTop: '2px' }}>초 후 112</div>
+          </div>
+          <div style={{
+            background: 'rgba(0,0,0,0.3)', borderRadius: '12px',
+            padding: '12px 16px', textAlign: 'center', maxWidth: '280px',
+          }}>
+            <div style={{ fontSize: '11px', color: '#FCA5A5', marginBottom: '4px' }}>현재 위치</div>
+            <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600, wordBreak: 'break-all' }}>
+              {currentLocation
+                ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
+                : '위치 확인 중...'}
             </div>
-          ) : (
-            <>
-              <div style={{ fontSize: '48px', fontWeight: 900, color: '#fff', lineHeight: 1 }}>{countdown}</div>
-              <div style={{ fontSize: '11px', color: '#FCA5A5', marginTop: '2px' }}>초 후 112</div>
-            </>
-          )}
-        </div>
-
-        <div style={{
-          background: 'rgba(0,0,0,0.3)', borderRadius: '12px',
-          padding: '12px 16px', textAlign: 'center', maxWidth: '280px',
-        }}>
-          <div style={{ fontSize: '11px', color: '#FCA5A5', marginBottom: '4px' }}>현재 위치</div>
-          <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600, wordBreak: 'break-all' }}>
-            {currentLocation
-              ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
-              : '위치 확인 중...'}
           </div>
-          {currentLocation && (
-            <button
-              onClick={() => navigator.clipboard?.writeText(mapsLink).catch(() => {})}
-              style={{ marginTop: '8px', fontSize: '11px', color: '#93C5FD', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              📋 지도 링크 복사
-            </button>
-          )}
         </div>
-      </div>
+      ) : (
+        /* 신고 완료 — 112 카드 + SMS 카드 동시 표시 */
+        <div style={{ width: '100%', maxWidth: '340px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-      {/* 하단: 버튼 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px' }}>
+          {/* 두 카드 가로 배치 */}
+          <div style={{ display: 'flex', gap: '10px' }}>
 
-        {/* 112 즉시 신고 */}
+            {/* 112 신고 카드 */}
+            <div style={{
+              flex: 1, background: 'rgba(22,101,52,0.85)', borderRadius: '16px',
+              border: '1.5px solid #4ADE80',
+              padding: '16px 12px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: '8px',
+            }}>
+              <div style={{ fontSize: '30px' }}>📞</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>112 신고</div>
+              <div style={{ fontSize: '11px', color: '#86EFAC', textAlign: 'center', lineHeight: 1.4 }}>
+                경찰청<br />긴급 신고
+              </div>
+              <a
+                href="tel:112"
+                style={{
+                  display: 'block', width: '100%', textAlign: 'center', boxSizing: 'border-box',
+                  background: '#22C55E', color: '#fff', borderRadius: '10px',
+                  padding: '10px 8px', fontSize: '13px', fontWeight: 800,
+                  textDecoration: 'none', marginTop: '4px',
+                }}
+              >
+                📞 전화 연결
+              </a>
+            </div>
+
+            {/* 보호자 SMS 카드 */}
+            <div style={{
+              flex: 1, background: 'rgba(30,58,95,0.85)', borderRadius: '16px',
+              border: '1.5px solid #60A5FA',
+              padding: '16px 12px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: '8px',
+            }}>
+              <div style={{ fontSize: '30px' }}>💬</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>보호자 SMS</div>
+              <div style={{ fontSize: '11px', color: '#93C5FD', textAlign: 'center', lineHeight: 1.4 }}>
+                {validGuardians.length > 0
+                  ? `${validGuardians.length}명에게\n발송됨 ✅`
+                  : '보호자\n미설정 ⚠️'}
+              </div>
+              <button
+                onClick={sendSMS}
+                disabled={smsSent}
+                style={{
+                  width: '100%', background: smsSent ? 'rgba(59,130,246,0.4)' : '#3B82F6',
+                  color: '#fff', borderRadius: '10px', padding: '10px 8px',
+                  fontSize: '13px', fontWeight: 800, border: 'none',
+                  cursor: smsSent ? 'default' : 'pointer', marginTop: '4px',
+                }}
+              >
+                {smsSent ? '✅ 발송 완료' : '💬 문자 보내기'}
+              </button>
+            </div>
+          </div>
+
+          {/* SMS 메시지 미리보기 */}
+          <div style={{
+            background: 'rgba(0,0,0,0.35)', borderRadius: '12px', padding: '14px',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <div style={{ fontSize: '11px', color: '#93C5FD', marginBottom: '8px', fontWeight: 700 }}>
+              📱 발송되는 문자 내용
+            </div>
+            <div style={{ fontSize: '12px', color: '#E2E8F0', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
+              {smsMsg}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 하단 버튼 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '300px', flexShrink: 0 }}>
         {!triggered && (
           <button
-            onClick={handleImmediate}
+            onClick={doTrigger}
             style={{
               padding: '18px', borderRadius: '14px', border: 'none',
               background: '#fff', color: '#7F1D1D',
@@ -183,8 +225,6 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
             📞 112 즉시 신고 (경찰)
           </button>
         )}
-
-        {/* 취소 */}
         {!triggered && (
           <button
             onClick={handleCancel}
@@ -197,11 +237,9 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
             오발동이에요 — 취소
           </button>
         )}
-
-        {/* 신고 완료 후 닫기 */}
         {triggered && (
           <button
-            onClick={() => { stopAlarmRef.current(); onClose(); }}
+            onClick={() => onClose()}
             style={{
               padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)',
               background: 'rgba(0,0,0,0.3)', color: '#9CA3AF',

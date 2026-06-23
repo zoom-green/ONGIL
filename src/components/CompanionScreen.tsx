@@ -113,6 +113,7 @@ export default function CompanionScreen({
   const isNight = () => { const h = new Date().getHours(); return h >= 19 || h < 6; };
 
   const buildLocationCtx = useCallback((): LocationContext => ({
+    mode: 'full',
     address: currentAddress,
     destination: destination ?? '목적지',
     routeType: routeType === 'fast' ? '빠른길' : '안심길',

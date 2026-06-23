@@ -1,5 +1,34 @@
 import { useEffect, useRef } from 'react';
 import type { LatLng, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint } from '../types';
+import type { UserLocation } from '../hooks/useUserLocation';
+
+// module-level: inject loc-pulse animation into <head> once
+let _locCssInjected = false;
+function injectUserDotCSS() {
+  if (_locCssInjected) return;
+  _locCssInjected = true;
+  const s = document.createElement('style');
+  s.textContent =
+    '@keyframes loc-pulse{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(3.5)}}';
+  document.head.appendChild(s);
+}
+
+function makeUserDotContent(heading: number | null): string {
+  // ring helper: expands from the 20×20 dot center with offset on each side
+  const ring = (delay: string, offset: string) =>
+    `<div style="position:absolute;top:${offset};left:${offset};right:${offset};bottom:${offset};border-radius:50%;background:rgba(59,130,246,0.22);animation:loc-pulse 2s ease-out ${delay} infinite;pointer-events:none"></div>`;
+
+  const dot =
+    '<div style="width:20px;height:20px;border-radius:50%;background:#3B82F6;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.38);position:relative;z-index:2"></div>';
+
+  const hasDir = heading !== null && !isNaN(heading);
+  // arrow: rotates inset-0 wrapper around the dot center; triangle points up at 0° (north)
+  const arrow = hasDir
+    ? `<div style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;transform:rotate(${Math.round(heading!)}deg)"><div style="position:absolute;left:50%;transform:translateX(-50%);top:-9px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:11px solid #1D4ED8;opacity:.9"></div></div>`
+    : '';
+
+  return `<div style="position:relative;width:20px;height:20px">${ring('0s', '-14px')}${ring('0.65s', '-7px')}${dot}${arrow}</div>`;
+}
 
 // Icons only appear when zoomed in to this level or closer (Kakao: smaller = more zoomed in)
 const ICON_ZOOM_THRESHOLD = 3;
@@ -16,6 +45,7 @@ interface Props {
   streetlights: StreetlightPoint[];
   showOverlays: boolean;
   onMapClick?: (pos: { lat: number; lng: number }, address: string) => void;
+  userLocation?: UserLocation | null;
 }
 
 export default function KakaoMap({
@@ -30,12 +60,15 @@ export default function KakaoMap({
   streetlights,
   showOverlays,
   onMapClick,
+  userLocation,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const objectsRef = useRef<(kakao.maps.Polyline | kakao.maps.Marker | kakao.maps.CustomOverlay)[]>([]);
   // tracks only CCTV/safespot icon overlays for zoom-based visibility
   const iconOverlaysRef = useRef<kakao.maps.CustomOverlay[]>([]);
+  // separate overlay for the live user-position dot (not cleared on route redraw)
+  const userOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   // ref so the zoom_changed closure always reads the latest prop value
   const showOverlaysRef = useRef(showOverlays);
   // ref so click closure always reads latest callback without re-registering the listener
@@ -90,6 +123,47 @@ export default function KakaoMap({
       );
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // live user-position dot — updates on every GPS tick without clearing the route overlays
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!userLocation) {
+      userOverlayRef.current?.setMap(null);
+      return;
+    }
+
+    injectUserDotCSS();
+    const pos = new kakao.maps.LatLng(userLocation.lat, userLocation.lng);
+
+    if (!userOverlayRef.current) {
+      // 타입 정의에 없는 옵션(zIndex, xAnchor, yAnchor)을 사용하기 위해 any 우회
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const overlayOpts: any = {
+        position: pos,
+        content: makeUserDotContent(userLocation.heading),
+        map,
+        zIndex: 100,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+      };
+      userOverlayRef.current = new kakao.maps.CustomOverlay(overlayOpts);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ol = userOverlayRef.current as any;
+      ol.setPosition(pos);
+      ol.setContent(makeUserDotContent(userLocation.heading));
+    }
+  }, [userLocation]);
+
+  // cleanup user overlay on unmount
+  useEffect(() => {
+    return () => {
+      userOverlayRef.current?.setMap(null);
+      userOverlayRef.current = null;
+    };
   }, []);
 
   // update center

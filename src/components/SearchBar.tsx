@@ -6,19 +6,37 @@ interface Props {
   onSelect: (place: Place) => void;
   placeholder?: string;
   defaultValue?: string;
+  userPosition?: { lat: number; lng: number } | null;
+}
+
+// distance result extends Place with optional distanceM for display
+interface SearchResult extends Place {
+  distanceM?: number;
 }
 
 const GANGNEUNG = { lat: 37.7519, lng: 128.8761 };
 
-export default function SearchBar({ onSelect, placeholder = '장소 또는 주소 검색', defaultValue = '' }: Props) {
+function formatDist(m: number): string {
+  if (m < 1000) return `${m}m`;
+  return `${(m / 1000).toFixed(1)}km`;
+}
+
+export default function SearchBar({
+  onSelect,
+  placeholder = '장소 또는 주소 검색',
+  defaultValue = '',
+  userPosition,
+}: Props) {
   const [query, setQuery] = useState(defaultValue);
-  const [results, setResults] = useState<Place[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const psRef = useRef<kakao.maps.services.Places | null>(null);
   const gcRef = useRef<kakao.maps.services.Geocoder | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingEnterRef = useRef(false); // 엔터 눌렀는데 결과 아직 없을 때 대기 플래그
+  const pendingEnterRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof kakao !== 'undefined') {
@@ -27,21 +45,29 @@ export default function SearchBar({ onSelect, placeholder = '장소 또는 주�
     }
   }, []);
 
-  const search = useCallback((text: string) => {
-    if (!text.trim()) { setResults([]); setOpen(false); return; }
+  // close dropdown when clicking outside the component
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
 
-    const merged: Place[] = [];
+  const search = useCallback((text: string) => {
+    if (!text.trim()) { setResults([]); setOpen(false); setIsLoading(false); return; }
+
+    setIsLoading(true);
+    const merged: SearchResult[] = [];
     const seen = new Set<string>();
     let doneCount = 0;
-    const TOTAL = 4; // ① 로컬 장소 ② 전국 장소 ③ 주소 ④ T-map POI
+    const TOTAL = 4; // ① 거리순 로컬 ② 전국 관련도 ③ 주소 ④ T-map POI
 
-    const toPlace = (r: kakao.maps.services.PlacesSearchResult): Place => ({
-      name: r.place_name,
-      address: r.road_address_name || r.address_name,
-      position: { lat: parseFloat(r.y), lng: parseFloat(r.x) },
-    });
+    const center = userPosition ?? GANGNEUNG;
 
-    const addPlace = (p: Place) => {
+    const addPlace = (p: SearchResult) => {
       const key = `${p.position.lat.toFixed(4)},${p.position.lng.toFixed(4)}`;
       if (!seen.has(key)) { seen.add(key); merged.push(p); }
     };
@@ -49,49 +75,76 @@ export default function SearchBar({ onSelect, placeholder = '장소 또는 주�
     const done = () => {
       doneCount++;
       if (doneCount >= TOTAL) {
-        const final = merged.slice(0, 8);
+        setIsLoading(false);
+        // sort by distance when available, then keep insertion order
+        const sorted = [...merged].sort((a, b) => {
+          if (a.distanceM != null && b.distanceM != null) return a.distanceM - b.distanceM;
+          if (a.distanceM != null) return -1;
+          if (b.distanceM != null) return 1;
+          return 0;
+        });
+        const final = sorted.slice(0, 8);
         setResults(final);
         setOpen(final.length > 0);
-        // 엔터를 먼저 눌렀던 경우 첫 번째 결과 자동 선택
         if (pendingEnterRef.current && final.length > 0) {
           pendingEnterRef.current = false;
           setQuery(final[0].name);
           setResults([]);
           setOpen(false);
-          onSelect(final[0]);
+          onSelect({ name: final[0].name, address: final[0].address, position: final[0].position });
         }
       }
     };
 
-    // ① 로컬 검색: 강릉 중심 30km 우선 (결과 리스트 앞쪽에 위치)
+    // ① 거리순 로컬 검색: 사용자 위치 기준 20km 반경, 가까운 순
     if (psRef.current) {
       psRef.current.keywordSearch(
         text,
         (res, status) => {
-          if (status === kakao.maps.services.Status.OK) res.forEach((r) => addPlace(toPlace(r)));
+          if (status === kakao.maps.services.Status.OK) {
+            res.forEach((r) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const dist = (r as any).distance as string | undefined;
+              addPlace({
+                name: r.place_name,
+                address: r.road_address_name || r.address_name,
+                position: { lat: parseFloat(r.y), lng: parseFloat(r.x) },
+                distanceM: dist ? parseInt(dist, 10) : undefined,
+              });
+            });
+          }
           done();
         },
-        { location: new kakao.maps.LatLng(GANGNEUNG.lat, GANGNEUNG.lng), radius: 30000, size: 8 }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ({ location: new kakao.maps.LatLng(center.lat, center.lng), radius: 20000, size: 8, sort: 1 } as any)
       );
     } else { done(); }
 
-    // ② 전국 검색: 반경 제한 없음 — 비슷한 이름·오타도 관련도 순으로 잡아줌
+    // ② 전국 관련도 검색: 고유명사·오타 보완
     if (psRef.current) {
       psRef.current.keywordSearch(
         text,
         (res, status) => {
-          if (status === kakao.maps.services.Status.OK) res.slice(0, 6).forEach((r) => addPlace(toPlace(r)));
+          if (status === kakao.maps.services.Status.OK) {
+            res.slice(0, 5).forEach((r) =>
+              addPlace({
+                name: r.place_name,
+                address: r.road_address_name || r.address_name,
+                position: { lat: parseFloat(r.y), lng: parseFloat(r.x) },
+              })
+            );
+          }
           done();
         },
-        { size: 8 }
+        { size: 6 }
       );
     } else { done(); }
 
-    // ③ 주소 검색: 도로명·지번 모두
+    // ③ 주소 검색
     if (gcRef.current) {
       gcRef.current.addressSearch(text, (res, status) => {
         if (status === kakao.maps.services.Status.OK) {
-          res.slice(0, 4).forEach((r) =>
+          res.slice(0, 3).forEach((r) =>
             addPlace({
               name: r.road_address?.address_name || r.address_name,
               address: r.address_name,
@@ -103,60 +156,107 @@ export default function SearchBar({ onSelect, placeholder = '장소 또는 주�
       });
     } else { done(); }
 
-    // ④ T-map POI 검색: 강릉 바운딩박스 내 소규모 장소·골목 보완
-    searchTmapPOI(text).then((places) => {
-      places.forEach(addPlace);
-      done();
-    }).catch(() => done());
-  }, []);
+    // ④ T-map POI: 강릉 바운딩박스 내 소규모 장소·골목 보완
+    searchTmapPOI(text)
+      .then((places) => { places.forEach(addPlace); done(); })
+      .catch(() => done());
+  }, [userPosition, onSelect]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setQuery(val);
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => search(val), 300);
+    if (!val.trim()) { setResults([]); setOpen(false); setIsLoading(false); return; }
+    timerRef.current = setTimeout(() => search(val), 250);
   };
 
-  const handleSelect = (place: Place) => {
+  const handleSelect = (place: SearchResult) => {
     setQuery(place.name);
     setResults([]);
     setOpen(false);
-    onSelect(place);
+    onSelect({ name: place.name, address: place.address, position: place.position });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (results.length > 0) {
-      // 결과 이미 있으면 즉시 첫 번째 선택
       handleSelect(results[0]);
     } else if (query.trim()) {
-      // 결과 없지만 입력값 있으면 검색 완료 후 자동 선택 대기
       pendingEnterRef.current = true;
     }
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <input
-        type="text"
-        value={query}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        style={{ width: '100%', padding: '11px 14px', fontSize: '15px', border: '1.5px solid #E5E7EB', borderRadius: '12px', outline: 'none', boxSizing: 'border-box', background: '#F9FAFB', color: '#111827' }}
-      />
-      {open && results.length > 0 && (
-        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', marginTop: '4px', padding: 0, listStyle: 'none', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', maxHeight: '260px', overflowY: 'auto' }}>
-          {results.map((place, i) => (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          type="text"
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          style={{
+            width: '100%', padding: '11px 36px 11px 14px', fontSize: '15px',
+            border: '1.5px solid #E5E7EB', borderRadius: '12px', outline: 'none',
+            boxSizing: 'border-box', background: '#F9FAFB', color: '#111827',
+          }}
+        />
+        {/* 로딩 스피너 / 검색 아이콘 */}
+        <div style={{
+          position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+          pointerEvents: 'none',
+        }}>
+          {isLoading ? (
+            <div style={{
+              width: '16px', height: '16px',
+              border: '2px solid #E5E7EB', borderTop: '2px solid #3B82F6',
+              borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+            }} />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <ul style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff',
+          border: '1px solid #E5E7EB', borderRadius: '12px', marginTop: '4px',
+          padding: 0, listStyle: 'none', zIndex: 9999,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          maxHeight: '280px', overflowY: 'auto',
+        }}>
+          {results.length === 0 ? (
+            <li style={{ padding: '14px 15px', fontSize: '13px', color: '#9CA3AF', textAlign: 'center' }}>
+              검색 결과 없음
+            </li>
+          ) : results.map((place, i) => (
             <li
               key={i}
-              onClick={() => handleSelect(place)}
-              style={{ padding: '11px 15px', cursor: 'pointer', borderBottom: i < results.length - 1 ? '1px solid #F3F4F6' : 'none' }}
+              onMouseDown={() => handleSelect(place)}
+              style={{
+                padding: '10px 15px', cursor: 'pointer',
+                borderBottom: i < results.length - 1 ? '1px solid #F3F4F6' : 'none',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+              }}
             >
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{place.name}</div>
-              {place.address && place.address !== place.name && (
-                <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px' }}>{place.address}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {place.name}
+                </div>
+                {place.address && place.address !== place.name && (
+                  <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {place.address}
+                  </div>
+                )}
+              </div>
+              {place.distanceM != null && (
+                <div style={{ fontSize: '12px', color: '#3B82F6', fontWeight: 600, marginLeft: '10px', flexShrink: 0 }}>
+                  {formatDist(place.distanceM)}
+                </div>
               )}
             </li>
           ))}
