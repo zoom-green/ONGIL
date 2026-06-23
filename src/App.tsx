@@ -18,6 +18,7 @@ import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
 import GuardianModal from './components/GuardianModal';
 
 const GUARDIAN_STORAGE_KEY = 'ongil_guardian_phones_v2';
+const CRIME_WMS_KEY = 'W5ZQMXVH-W5ZQ-W5ZQ-W5ZQ-W5ZQMXVHPG';
 
 const GANGNEUNG_CENTER: LatLng = { lat: 37.7519, lng: 128.8761 };
 
@@ -411,6 +412,8 @@ export default function App() {
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
           userLocation={userLocation}
+          crimeWmsKey={CRIME_WMS_KEY}
+          showCrimeOverlay={showOverlays}
         />
 
         {/* 지도 클릭 시 출발지/도착지 설정 바텀시트 */}

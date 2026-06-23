@@ -46,6 +46,8 @@ interface Props {
   showOverlays: boolean;
   onMapClick?: (pos: { lat: number; lng: number }, address: string) => void;
   userLocation?: UserLocation | null;
+  crimeWmsKey?: string;
+  showCrimeOverlay?: boolean;
 }
 
 export default function KakaoMap({
@@ -61,6 +63,8 @@ export default function KakaoMap({
   showOverlays,
   onMapClick,
   userLocation,
+  crimeWmsKey,
+  showCrimeOverlay,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
@@ -69,6 +73,9 @@ export default function KakaoMap({
   const iconOverlaysRef = useRef<kakao.maps.CustomOverlay[]>([]);
   // separate overlay for the live user-position dot (not cleared on route redraw)
   const userOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
+  // 범죄주의구간 WMS 이미지 오버레이
+  const crimeImgRef = useRef<HTMLImageElement | null>(null);
+  const crimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ref so the zoom_changed closure always reads the latest prop value
   const showOverlaysRef = useRef(showOverlays);
   // ref so click closure always reads latest callback without re-registering the listener
@@ -165,6 +172,63 @@ export default function KakaoMap({
       userOverlayRef.current = null;
     };
   }, []);
+
+  // 범죄주의구간 WMS 오버레이 — bounds 변경 시 이미지 갱신
+  useEffect(() => {
+    const map = mapRef.current;
+    const container = containerRef.current;
+
+    // 비활성화 시 오버레이 제거
+    if (!showCrimeOverlay || !crimeWmsKey) {
+      if (crimeImgRef.current) {
+        crimeImgRef.current.remove();
+        crimeImgRef.current = null;
+      }
+      return;
+    }
+
+    const refreshImage = () => {
+      if (!map || !container) return;
+      // @ts-expect-error kakao types incomplete
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const w = container.offsetWidth || 512;
+      const h = container.offsetHeight || 512;
+      const bbox = `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
+      const url = `https://safemap.go.kr/openapi2/IF_0087_WMS?serviceKey=${crimeWmsKey}&srs=EPSG:4326&bbox=${bbox}&format=image/png&width=${w}&height=${h}&transparent=TRUE`;
+
+      if (!crimeImgRef.current) {
+        const img = document.createElement('img');
+        img.style.cssText =
+          'position:absolute;top:0;left:0;width:100%;height:100%;' +
+          'opacity:0.45;pointer-events:none;z-index:10;';
+        container.appendChild(img);
+        crimeImgRef.current = img;
+      }
+      crimeImgRef.current.src = url;
+    };
+
+    refreshImage();
+
+    // 지도 이동/줌 후 300ms 디바운스로 갱신
+    const onBoundsChange = () => {
+      if (crimeTimerRef.current) clearTimeout(crimeTimerRef.current);
+      crimeTimerRef.current = setTimeout(refreshImage, 300);
+    };
+    // @ts-expect-error kakao types incomplete
+    kakao.maps.event.addListener(map, 'bounds_changed', onBoundsChange);
+
+    return () => {
+      if (crimeTimerRef.current) clearTimeout(crimeTimerRef.current);
+      // @ts-expect-error kakao types incomplete
+      kakao.maps.event.removeListener(map, 'bounds_changed', onBoundsChange);
+      if (crimeImgRef.current) {
+        crimeImgRef.current.remove();
+        crimeImgRef.current = null;
+      }
+    };
+  }, [showCrimeOverlay, crimeWmsKey]);
 
   // update center
   useEffect(() => {
