@@ -44,6 +44,8 @@ export default function App() {
 
   const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
   const [manualOrigin, setManualOrigin] = useState<Place | null>(null);
+  // 경로 계산 시 확정된 출발지 — GPS 틱마다 변하는 effectiveOrigin 대신 KakaoMap에 전달
+  const [lockedOrigin, setLockedOrigin] = useState<LatLng | null>(null);
 
   const effectiveOrigin: LatLng | null = manualOrigin?.position ?? gpsOrigin;
 
@@ -190,6 +192,7 @@ export default function App() {
         setSafeRoute(sr);
         setFastRoute(fr);
         setActiveRoute('safe');
+        setLockedOrigin(effectiveOrigin);
       } catch (e) {
         console.error(e);
         setError('경로를 불러오지 못했습니다. API 키 또는 네트워크를 확인해주세요.');
@@ -205,6 +208,7 @@ export default function App() {
     setDestination(null);
     setSafeRoute(null);
     setFastRoute(null);
+    setLockedOrigin(null);
     setError(null);
   };
 
@@ -396,7 +400,7 @@ export default function App() {
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         <KakaoMap
           center={userPos}
-          origin={effectiveOrigin}
+          origin={lockedOrigin}
           destination={destination?.position ?? null}
           safeRoute={safeRoute}
           fastRoute={fastRoute}
