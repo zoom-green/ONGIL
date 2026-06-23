@@ -400,7 +400,7 @@ export default function App() {
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         <KakaoMap
           center={userPos}
-          origin={lockedOrigin}
+          origin={lockedOrigin ?? manualOrigin?.position ?? null}
           destination={destination?.position ?? null}
           safeRoute={safeRoute}
           fastRoute={fastRoute}

@@ -38,12 +38,14 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
   const triggeredRef = useRef(false);
   const stopAlarmRef = useRef<() => void>(() => {});
 
-  const validGuardians = guardianPhones.filter(p => p.trim());
+  // SOS 발생 시점의 위치·연락처를 ref로 고정
+  // — GPS 틱마다 currentLocation이 바뀌어도 smsMsg·doTrigger가 재생성되지 않도록
+  const locationRef = useRef(currentLocation);
+  const validGuardians = useRef(guardianPhones.filter(p => p.trim())).current;
 
-  const mapsLink = currentLocation
-    ? `https://maps.google.com/?q=${currentLocation.lat},${currentLocation.lng}`
+  const mapsLink = locationRef.current
+    ? `https://maps.google.com/?q=${locationRef.current.lat},${locationRef.current.lng}`
     : '위치 확인 중';
-
   const smsMsg = `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
 
   useEffect(() => {
@@ -51,22 +53,16 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
     return () => { stopAlarmRef.current(); };
   }, []);
 
-  // 보호자 SMS 발송 (화면은 유지하고 백그라운드 발송)
-  const sendSMS = useCallback(() => {
-    if (smsSent) return;
-    setSmsSent(true);
-    sendGuardianSMSAll(validGuardians, smsMsg);
-  }, [smsSent, validGuardians, smsMsg]);
-
-  // trigger 실행: 알람 중단 + SMS 발송 + 화면 전환
+  // trigger 실행: 알람 중단 + 112 자동 다이얼 + 화면 전환
+  // deps를 ref로 처리했으므로 빈 배열 → countdown 타이머가 GPS 틱에 의해 reset되지 않음
   const doTrigger = useCallback(() => {
     if (triggeredRef.current) return;
     triggeredRef.current = true;
     setTriggered(true);
     stopAlarmRef.current();
-    sendGuardianSMSAll(validGuardians, smsMsg);
-    setSmsSent(true);
-  }, [validGuardians, smsMsg]);
+    // 112 자동 다이얼 (모바일: 전화 앱 다이얼러 열림, 앱은 백그라운드 유지)
+    window.location.href = 'tel:112';
+  }, []);
 
   // 5초 카운트다운
   useEffect(() => {
@@ -75,6 +71,13 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown, triggered, doTrigger]);
+
+  // 보호자 SMS 발송 — SMS 앱 열어서 전송 (웹 브라우저 한계)
+  const sendSMS = useCallback(() => {
+    if (smsSent) return;
+    setSmsSent(true);
+    sendGuardianSMSAll(validGuardians, smsMsg);
+  }, [smsSent, validGuardians, smsMsg]);
 
   const handleCancel = () => {
     stopAlarmRef.current();
@@ -128,8 +131,8 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
           }}>
             <div style={{ fontSize: '11px', color: '#FCA5A5', marginBottom: '4px' }}>현재 위치</div>
             <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600, wordBreak: 'break-all' }}>
-              {currentLocation
-                ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
+              {locationRef.current
+                ? `${locationRef.current.lat.toFixed(5)}, ${locationRef.current.lng.toFixed(5)}`
                 : '위치 확인 중...'}
             </div>
           </div>
@@ -138,7 +141,6 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
         /* 신고 완료 — 112 카드 + SMS 카드 동시 표시 */
         <div style={{ width: '100%', maxWidth: '340px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-          {/* 두 카드 가로 배치 */}
           <div style={{ display: 'flex', gap: '10px' }}>
 
             {/* 112 신고 카드 */}
@@ -177,7 +179,7 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
               <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff', textAlign: 'center' }}>보호자 SMS</div>
               <div style={{ fontSize: '11px', color: '#93C5FD', textAlign: 'center', lineHeight: 1.4 }}>
                 {validGuardians.length > 0
-                  ? `${validGuardians.length}명에게\n발송됨 ✅`
+                  ? `${validGuardians.length}명에게 발송`
                   : '보호자\n미설정 ⚠️'}
               </div>
               <button
