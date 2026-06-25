@@ -1,15 +1,6 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import https from 'https';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const app = express();
-const PORT = 3001;
 const REALTIME_MODEL = 'gpt-realtime-2';
-
-app.use(cors({ origin: ['http://localhost:5173', 'capacitor://localhost', 'ionic://localhost'] }));
-app.use(express.text({ type: ['application/sdp', 'text/plain'], limit: '2mb' }));
-app.use(express.json({ limit: '2mb' }));
 
 type Persona = 'mom' | 'dad' | 'brother';
 
@@ -62,39 +53,34 @@ function buildRealtimeSession(persona: Persona) {
   };
 }
 
-// ─── 카카오 운영시간 프록시 ───────────────────────────────────────────
-app.get('/api/hours', (req, res) => {
-  const placeId = req.query.placeId as string;
-  if (!placeId) { res.status(400).json({ error: 'placeId required' }); return; }
+async function readBody(req: VercelRequest): Promise<string> {
+  if (typeof req.body === 'string') return req.body;
+  if (Buffer.isBuffer(req.body)) return req.body.toString('utf8');
+  return await new Promise((resolve, reject) => {
+    let data = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { data += chunk; });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
 
-  const url = `https://place.map.kakao.com/main/v/${placeId}`;
-  https.get(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Referer': 'https://map.kakao.com/',
-    },
-  }, (kakaoRes) => {
-    let body = '';
-    kakaoRes.on('data', (chunk) => { body += chunk; });
-    kakaoRes.on('end', () => {
-      try { res.json({ openHour: JSON.parse(body)?.basicInfo?.openHour ?? null }); }
-      catch { res.json({ openHour: null }); }
-    });
-  }).on('error', () => res.json({ openHour: null }));
-});
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method !== 'POST') { res.status(405).end(); return; }
 
-// ─── OpenAI Realtime 음성 대화 연결 ─────────────────────────────────
-app.post('/api/realtime-call', async (req, res) => {
   const key = process.env.OPENAI_API_KEY;
   if (!key) { res.status(500).json({ error: 'OPENAI_API_KEY 미설정' }); return; }
-  if (typeof req.body !== 'string' || !req.body.trim()) {
-    res.status(400).json({ error: 'SDP offer가 필요합니다.' });
-    return;
-  }
+
+  const sdp = await readBody(req);
+  if (!sdp.trim()) { res.status(400).json({ error: 'SDP offer가 필요합니다.' }); return; }
 
   const persona = parsePersona(req.query.persona);
   const formData = new FormData();
-  formData.set('sdp', req.body);
+  formData.set('sdp', sdp);
   formData.set('session', JSON.stringify(buildRealtimeSession(persona)));
 
   try {
@@ -115,6 +101,4 @@ app.post('/api/realtime-call', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
-});
-
-app.listen(PORT, () => console.log(`[온길 서버] http://localhost:${PORT}`));
+}

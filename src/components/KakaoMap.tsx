@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { LatLng, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint } from '../types';
+import type { LatLng, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint, ChildSafeHousePoint } from '../types';
 import type { UserLocation } from '../hooks/useUserLocation';
 
 // module-level: inject loc-pulse animation into <head> once
@@ -46,6 +46,7 @@ interface Props {
   showOverlays: boolean;
   onMapClick?: (pos: { lat: number; lng: number }, address: string) => void;
   userLocation?: UserLocation | null;
+  childSafeHouses?: ChildSafeHousePoint[];
   crimeWmsKey?: string;
   showCrimeOverlay?: boolean;
 }
@@ -63,6 +64,7 @@ export default function KakaoMap({
   showOverlays,
   onMapClick,
   userLocation,
+  childSafeHouses,
   crimeWmsKey,
   showCrimeOverlay,
 }: Props) {
@@ -377,6 +379,16 @@ export default function KakaoMap({
         add(overlay);
       }
 
+      for (const h of (childSafeHouses ?? [])) {
+        const overlay = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(h.lat, h.lng),
+          content: '<div style="width:22px;height:22px;background:#F97316;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>',
+        });
+        if (iconsVisible) overlay.setMap(map);
+        iconOverlaysRef.current.push(overlay);
+        add(overlay);
+      }
+
       for (const light of streetlights) {
         const content = '<div style="width:16px;height:16px;background:#F59E0B;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3);cursor:default"><svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>';
         const overlay = new kakao.maps.CustomOverlay({
@@ -421,7 +433,7 @@ export default function KakaoMap({
       map.setBounds(bounds);
     }
 
-  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays]);
+  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses]);
 
   return (
     <div

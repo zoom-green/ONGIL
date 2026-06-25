@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import KakaoMap from './components/KakaoMap';
 import SearchBar from './components/SearchBar';
 import RouteCard from './components/RouteCard';
-import CompanionWrapper from './components/CompanionWrapper';
-import type { CompanionDisplayMode } from './components/CompanionWrapper';
+import CompanionCall from './components/CompanionCall';
+import type { CompanionDisplayMode } from './components/CompanionCall';
 import EmergencyScreen from './components/EmergencyScreen';
 import { useUserLocation } from './hooks/useUserLocation';
-import type { LatLng, Place, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint } from './types';
+import type { LatLng, Place, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint, ChildSafeHousePoint } from './types';
+import { CHILD_SAFE_HOUSES } from './data/childSafeHouses';
 import { fetchPedestrianRoutes } from './utils/tmap';
 import { loadCctvData } from './utils/cctv';
 import { loadStreetlightData } from './utils/streetlight';
@@ -16,6 +17,7 @@ import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
 import { useShakeDetection } from './hooks/useShakeDetection';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
 import GuardianModal from './components/GuardianModal';
+import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
 
 const GUARDIAN_STORAGE_KEY = 'ongil_guardian_phones_v2';
 const CRIME_WMS_KEY = 'W5ZQMXVH-W5ZQ-W5ZQ-W5ZQ-W5ZQMXVHPG';
@@ -65,7 +67,9 @@ export default function App() {
   // 실시간 GPS 추적 훅 — watchPosition 기반, heading 포함
   const { location: userLocation, ready: locationReady } = useUserLocation();
   const [companionDisplay, setCompanionDisplay] = useState<CompanionDisplayMode | 'hidden'>('hidden');
-  const [companionAiMode, setCompanionAiMode] = useState<'full' | 'companion_only'>('companion_only');
+  const [selectedPersona, setSelectedPersona] = useState<Persona>('mom');
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [companionKey, setCompanionKey] = useState(0);
   const companionActive = companionDisplay !== 'hidden';
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [emergencyTrigger, setEmergencyTrigger] = useState<'sos' | 'shake'>('shake');
@@ -270,6 +274,13 @@ export default function App() {
       .slice(0, 300);
   }, [sampledNodes, streetlightData]);
 
+  const displayChildSafeHouses = useMemo((): ChildSafeHousePoint[] => {
+    if (sampledNodes.length === 0) return [];
+    return CHILD_SAFE_HOUSES
+      .filter((h) => sampledNodes.some((n) => distanceMeters(h, n) <= 120))
+      .slice(0, 100);
+  }, [sampledNodes]);
+
   const guardianSetCount = guardianPhones.filter(p => p.trim()).length;
 
   // SDK 오류 화면
@@ -409,6 +420,7 @@ export default function App() {
           cctvList={showOverlays ? displayCctv : []}
           safeSpots={showOverlays ? displaySpots : []}
           streetlights={showOverlays ? displayStreetlights : []}
+          childSafeHouses={showOverlays ? displayChildSafeHouses : []}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
           userLocation={userLocation}
@@ -497,10 +509,7 @@ export default function App() {
         {/* AI 동행 시작 버튼 (지도 우하단 플로팅) */}
         {!loading && !companionActive && (
           <button
-            onClick={() => {
-              setCompanionAiMode(safeRoute ? 'full' : 'companion_only');
-              setCompanionDisplay('fullscreen');
-            }}
+            onClick={() => setShowPersonaModal(true)}
             style={{
               position: 'absolute', bottom: '20px', right: '16px', zIndex: 15,
               background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
@@ -512,8 +521,77 @@ export default function App() {
               fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
             }}
           >
-            {safeRoute ? '👩 AI 동행 시작' : '👩 AI 동행만 시작'}
+            👥 AI 음성 대화
           </button>
+        )}
+
+        {/* 페르소나 선택 모달 */}
+        {showPersonaModal && (
+          <div
+            onClick={() => setShowPersonaModal(false)}
+            style={{
+              position: 'absolute', inset: 0, zIndex: 50,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#fff', borderRadius: '20px', padding: '28px 24px',
+                width: '300px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+              }}
+            >
+              <p style={{ textAlign: 'center', fontWeight: 700, fontSize: '16px', margin: '0 0 8px' }}>
+                누구와 통화할까요?
+              </p>
+              <p style={{ textAlign: 'center', fontSize: '12px', color: '#9CA3AF', margin: '0 0 24px' }}>
+                선택한 페르소나와 한국어로 자유롭게 대화해요
+              </p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                {(['mom', 'dad', 'brother'] as Persona[]).map(p => {
+                  const selected = selectedPersona === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setSelectedPersona(p)}
+                      style={{
+                        flex: 1, padding: '16px 8px', borderRadius: '14px',
+                        border: selected ? '2px solid #7c3aed' : '2px solid #E5E7EB',
+                        background: selected ? '#F5F3FF' : '#fff',
+                        cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', gap: '6px',
+                      }}
+                    >
+                      <span style={{ fontSize: '28px' }}>{PERSONA_EMOJI[p]}</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: selected ? '#7c3aed' : '#374151' }}>
+                        {PERSONA_LABELS[p]}
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#9CA3AF', lineHeight: 1.35 }}>
+                        {PERSONA_DESCRIPTIONS[p]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => {
+                  setShowPersonaModal(false);
+                  setCompanionKey(k => k + 1);
+                  setCompanionDisplay('fullscreen');
+                }}
+                style={{
+                  marginTop: '20px', width: '100%', padding: '14px',
+                  background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                  color: '#fff', border: 'none', borderRadius: '12px',
+                  fontSize: '15px', fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                {PERSONA_LABELS[selectedPersona]}와 통화하기
+              </button>
+            </div>
+          </div>
         )}
 
         {loading && (
@@ -524,19 +602,14 @@ export default function App() {
         )}
       </div>
 
-      {/* AI 동행 래퍼 — 세션 내내 마운트 유지, 풀↔미니 전환 시 훅은 살아있음 */}
+      {/* AI 음성 대화 */}
       {companionDisplay !== 'hidden' && (
-        <CompanionWrapper
-          mode={companionAiMode}
+        <CompanionCall
+          key={companionKey}
+          persona={selectedPersona}
           displayMode={companionDisplay}
           onDisplayModeChange={setCompanionDisplay}
           onEnd={() => setCompanionDisplay('hidden')}
-          onEmergency={() => { setCompanionDisplay('hidden'); setEmergencyTrigger('sos'); setEmergencyActive(true); }}
-          destination={destination?.name}
-          guardianPhones={guardianPhones}
-          currentLocation={gpsOrigin}
-          routeNodes={sampledNodes}
-          routeType={activeRoute}
         />
       )}
 

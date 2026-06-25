@@ -19,6 +19,13 @@ export interface StreetlightPoint {
   lng: number;
 }
 
+export interface ChildSafeHousePoint {
+  name: string;
+  lat: number;
+  lng: number;
+  address: string;
+}
+
 export interface SafeSpot {
   name: string;
   lat: number;

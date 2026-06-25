@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 export interface UserLocation {
   lat: number;
@@ -81,14 +81,11 @@ export function useUserLocation(): {
     };
   }, []);
 
-  const location: UserLocation | null = gpsPos
-    ? {
-        lat: gpsPos.lat,
-        lng: gpsPos.lng,
-        // 나침반 우선(정지 상태도 동작), 없으면 GPS 이동 방향
-        heading: compassHeading ?? gpsPos.heading,
-      }
-    : null;
+  const location = useMemo<UserLocation | null>(() =>
+    gpsPos
+      ? { lat: gpsPos.lat, lng: gpsPos.lng, heading: compassHeading ?? gpsPos.heading }
+      : null,
+  [gpsPos, compassHeading]);
 
   return { location, error, ready };
 }
