@@ -349,7 +349,7 @@ export default function KakaoMap({
       for (const c of cctvList) {
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(c.lat, c.lng),
-          content: '<div style="width:22px;height:22px;background:#2563EB;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></div>',
+          content: '<img src="/icons/cctv.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>',
         });
         if (iconsVisible) overlay.setMap(map);
         iconOverlaysRef.current.push(overlay);
@@ -360,16 +360,16 @@ export default function KakaoMap({
         const cat = s.category;
         const content =
           cat.includes('경찰') || cat.includes('지구대') || cat.includes('파출소')
-            ? '<div style="width:22px;height:22px;background:#1E3A8A;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M12 2L4 6v5.5C4 16.55 7.84 21.74 12 23c4.16-1.26 8-6.45 8-11.5V6l-8-4z"/></svg></div>'
+            ? '<img src="/icons/police.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>'
           : cat.includes('소방')
-            ? '<div style="width:22px;height:22px;background:#DC2626;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M19.48 12.35c-1.57-4.08-7.16-4.3-5.81-10.23.1-.44-.37-.78-.75-.55C9.29 3.71 6.68 8 8.87 13.62c.18.46-.36.89-.75.59-1.81-1.37-2-3.34-1.84-4.75.06-.52-.62-.77-.91-.34C4.69 10.16 4 11.84 4 14c0 4.22 3.58 7.64 8 7.64 5.46 0 9.4-5.18 7.48-9.29z"/></svg></div>'
+            ? '<img src="/icons/fire.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>'
           : cat.includes('편의점')
-            ? '<div style="width:22px;height:22px;background:#059669;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm6 16H6V8h2v2c0 .55.45 1 1 1s1-.45 1-1V8h4v2c0 .55.45 1 1 1s1-.45 1-1V8h2v12z"/></svg></div>'
+            ? '<img src="/icons/convenience.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>'
           : cat.includes('카페')
-            ? '<div style="width:22px;height:22px;background:#78350F;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/></svg></div>'
+            ? '<img src="/icons/cafe.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>'
           : cat.includes('약국')
-            ? '<div style="width:22px;height:22px;background:#0891B2;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg></div>'
-            : '<div style="width:22px;height:22px;background:#D97706;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg></div>';
+            ? '<div style="width:24px;height:24px;background:#0891B2;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg></div>'
+            : '<img src="/icons/restaurant.png" width="24" height="24" style="border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:block;cursor:default"/>';
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(s.lat, s.lng),
           content,
@@ -382,7 +382,7 @@ export default function KakaoMap({
       for (const h of (childSafeHouses ?? [])) {
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(h.lat, h.lng),
-          content: '<div style="width:22px;height:22px;background:#F97316;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>',
+          content: '<div style="width:24px;height:24px;background:#F97316;border-radius:5px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:default"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>',
         });
         if (iconsVisible) overlay.setMap(map);
         iconOverlaysRef.current.push(overlay);
@@ -390,7 +390,7 @@ export default function KakaoMap({
       }
 
       for (const light of streetlights) {
-        const content = '<div style="width:16px;height:16px;background:#F59E0B;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3);cursor:default"><svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>';
+        const content = '<img src="/icons/streetlight.png" width="20" height="20" style="border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);display:block;cursor:default"/>';
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(light.lat, light.lng),
           content,
