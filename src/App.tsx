@@ -641,13 +641,13 @@ export default function App() {
               </div>
               {showOverlays && (
                 <div style={{ display: 'flex', gap: '10px', marginTop: '12px', padding: '10px 12px', background: '#F8FAFC', borderRadius: '10px', flexWrap: 'wrap' }}>
-                  <LegendItem color="#2563EB" label="CCTV" iconKey="cctv" />
-                  <LegendItem color="#F59E0B" label="가로등" iconKey="streetlight" />
-                  <LegendItem color="#059669" label="편의점" iconKey="store" />
-                  <LegendItem color="#78350F" label="카페" iconKey="cafe" />
-                  <LegendItem color="#D97706" label="음식점" iconKey="restaurant" />
-                  <LegendItem color="#1E3A8A" label="경찰·지구대" iconKey="police" />
-                  <LegendItem color="#DC2626" label="소방서" iconKey="fire" />
+                  <LegendItem label="CCTV" iconFile="cctv.png" />
+                  <LegendItem label="가로등" iconFile="streetlight.png" />
+                  <LegendItem label="편의점" iconFile="convenience.png" />
+                  <LegendItem label="카페" iconFile="cafe.png" />
+                  <LegendItem label="음식점" iconFile="restaurant.png" />
+                  <LegendItem label="경찰·지구대" iconFile="police.png" />
+                  <LegendItem label="소방서" iconFile="fire.png" />
                 </div>
               )}
             </>
@@ -668,24 +668,10 @@ export default function App() {
   );
 }
 
-const LEGEND_ICONS = {
-  cctv:        'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z',
-  streetlight: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-  store:       'M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm6 16H6V8h2v2c0 .55.45 1 1 1s1-.45 1-1V8h4v2c0 .55.45 1 1 1s1-.45 1-1V8h2v12z',
-  cafe:        'M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z',
-  restaurant:  'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z',
-  police:      'M12 2L4 6v5.5C4 16.55 7.84 21.74 12 23c4.16-1.26 8-6.45 8-11.5V6l-8-4z',
-  fire:        'M19.48 12.35c-1.57-4.08-7.16-4.3-5.81-10.23.1-.44-.37-.78-.75-.55C9.29 3.71 6.68 8 8.87 13.62c.18.46-.36.89-.75.59-1.81-1.37-2-3.34-1.84-4.75.06-.52-.62-.77-.91-.34C4.69 10.16 4 11.84 4 14c0 4.22 3.58 7.64 8 7.64 5.46 0 9.4-5.18 7.48-9.29z',
-} as const;
-
-function LegendItem({ color, label, iconKey }: { color: string; label: string; iconKey: keyof typeof LEGEND_ICONS }) {
+function LegendItem({ label, iconFile }: { label: string; iconFile: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-      <div style={{ width: '16px', height: '16px', background: color, borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
-          <path d={LEGEND_ICONS[iconKey]} />
-        </svg>
-      </div>
+      <img src={`/icons/${iconFile}`} width="16" height="16" style={{ borderRadius: '3px', flexShrink: 0, display: 'block' }} />
       <span style={{ fontSize: '11px', color: '#6B7280' }}>{label}</span>
     </div>
   );
