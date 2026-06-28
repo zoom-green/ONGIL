@@ -433,9 +433,8 @@ export default function App() {
   }, [activeRoute, safeRoute, routeCandidateSafetyPoints, safetySettings.selectedFeatures]);
 
   const visibleRouteEvidenceSafetyPoints = useMemo((): SafetyPoint[] => {
-    if (!hasVisibleFeature) return EMPTY_SAFETY_POINTS;
-    return routeEvidenceSafetyPoints.filter((point) => visibleFeatures[point.featureId]);
-  }, [hasVisibleFeature, routeEvidenceSafetyPoints, visibleFeatures]);
+    return routeEvidenceSafetyPoints.filter((point) => point.featureId !== 'light');
+  }, [routeEvidenceSafetyPoints]);
 
   const displaySafetyPoints = useMemo((): SafetyPoint[] => {
     if (!showOverlays || !hasVisibleFeature) return EMPTY_SAFETY_POINTS;

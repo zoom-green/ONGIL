@@ -37,6 +37,7 @@ const GANGNEUNG_BOUNDS = {
   north: 37.95,
   east: 129.12,
 };
+const SAFETY_MARKER_ZOOM_THRESHOLD = 6;
 
 function isInsideGangneungBounds(lat: number, lng: number): boolean {
   return lat >= GANGNEUNG_BOUNDS.south && lat <= GANGNEUNG_BOUNDS.north
@@ -57,6 +58,10 @@ function getRenderRouteNodes(nodes: LatLng[], maxPoints = 240): LatLng[] {
 
 function toKakaoPath(nodes: LatLng[]) {
   return getRenderRouteNodes(nodes).map((n) => new kakao.maps.LatLng(n.lat, n.lng));
+}
+
+function canShowSafetyMarkers(map: kakao.maps.Map, showOverlays: boolean, hasRouteEvidence: boolean, interacting: boolean): boolean {
+  return !interacting && map.getLevel() <= SAFETY_MARKER_ZOOM_THRESHOLD && (showOverlays || hasRouteEvidence);
 }
 
 function safetyIconSvg(featureId: string, size: number): string {
@@ -181,7 +186,7 @@ export default function KakaoMap({
     hasRouteEvidenceRef.current = routeEvidencePoints.length > 0;
     const map = mapRef.current;
     if (!map) return;
-    const visible = !mapInteractingRef.current && (showOverlays || routeEvidencePoints.length > 0);
+    const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
     iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
   }, [showOverlays, routeEvidencePoints.length]);
 
@@ -227,7 +232,7 @@ export default function KakaoMap({
     };
     const restoreSafetyOverlaysAfterMoving = () => {
       mapInteractingRef.current = false;
-      const visible = showOverlaysRef.current || hasRouteEvidenceRef.current;
+      const visible = canShowSafetyMarkers(map, showOverlaysRef.current, hasRouteEvidenceRef.current, false);
       iconOverlaysRef.current.forEach((overlay) => overlay.setMap(visible ? map : null));
       routeLineRefs.current.forEach(({ line, opacity }) => (line as any).setOptions({ strokeOpacity: opacity }));
       emitBoundsSoon();
@@ -240,7 +245,7 @@ export default function KakaoMap({
     kakao.maps.event.addListener(map, 'zoom_start', hideSafetyOverlaysWhileMoving);
     // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'zoom_changed', () => {
-      const visible = !mapInteractingRef.current && (showOverlaysRef.current || hasRouteEvidenceRef.current);
+      const visible = canShowSafetyMarkers(map, showOverlaysRef.current, hasRouteEvidenceRef.current, mapInteractingRef.current);
       iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
     });
     // @ts-expect-error kakao types incomplete
@@ -518,7 +523,8 @@ export default function KakaoMap({
       activeSafetyOverlayKeys.add(key);
       const cached = safetyOverlayCacheRef.current.get(key);
       if (cached && cached.content === content) {
-        cached.overlay.setMap(mapInteractingRef.current ? null : map);
+        const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
+        cached.overlay.setMap(visible ? map : null);
         iconOverlaysRef.current.push(cached.overlay);
         return;
       }
@@ -530,7 +536,8 @@ export default function KakaoMap({
         zIndex: 20,
       } as kakao.maps.CustomOverlayOptions & { zIndex: number };
       const overlay = new kakao.maps.CustomOverlay(overlayOptions);
-      overlay.setMap(mapInteractingRef.current ? null : map);
+      const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
+      overlay.setMap(visible ? map : null);
       safetyOverlayCacheRef.current.set(key, { overlay, content });
       iconOverlaysRef.current.push(overlay);
     };
@@ -593,9 +600,9 @@ export default function KakaoMap({
       add(line);
     }
 
-    // Safety icons and route evidence points follow the selected toggles at every zoom level.
+    // Safety icons and route evidence points appear only when the map is zoomed in enough.
     if (showOverlays || routeEvidencePoints.length > 0) {
-      const iconsVisible = true;
+      const iconsVisible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
 
       const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;',
