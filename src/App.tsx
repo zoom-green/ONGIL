@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import KakaoMap from './components/KakaoMap';
+import { startTransition } from 'react';
 import SearchBar from './components/SearchBar';
 import RouteCard from './components/RouteCard';
 import CompanionCall from './components/CompanionCall';
@@ -241,7 +242,9 @@ export default function App() {
   };
 
   const toggleVisibleFeature = (id: SafetyFeatureId) => {
-    setVisibleFeatures((current) => ({ ...current, [id]: !current[id] }));
+    startTransition(() => {
+      setVisibleFeatures((current) => ({ ...current, [id]: !current[id] }));
+    });
   };
 
   const handleOriginSelect = useCallback((place: Place) => {
@@ -424,6 +427,11 @@ export default function App() {
       safetySettings.selectedFeatures
     );
   }, [activeRoute, safeRoute, routeCandidateSafetyPoints, safetySettings.selectedFeatures]);
+
+  const visibleRouteEvidenceSafetyPoints = useMemo((): SafetyPoint[] => {
+    if (!hasVisibleFeature) return EMPTY_SAFETY_POINTS;
+    return routeEvidenceSafetyPoints.filter((point) => visibleFeatures[point.featureId]);
+  }, [hasVisibleFeature, routeEvidenceSafetyPoints, visibleFeatures]);
 
   const displaySafetyPoints = useMemo((): SafetyPoint[] => {
     if (!showOverlays || !hasVisibleFeature) return EMPTY_SAFETY_POINTS;
@@ -718,11 +726,11 @@ export default function App() {
           streetlights={[]}
           childSafeHouses={[]}
           safetyPoints={displaySafetyPoints}
-          routeEvidencePoints={routeEvidenceSafetyPoints}
+          routeEvidencePoints={visibleRouteEvidenceSafetyPoints}
           safemapWmsLayers={EMPTY_WMS_LAYERS}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
-          onBoundsChange={hasVisibleFeature ? setMapBounds : undefined}
+          onBoundsChange={setMapBounds}
           userLocation={userLocation}
           crimeWmsKey={CRIME_WMS_KEY}
           showCrimeOverlay={showOverlays && hasVisibleFeature}

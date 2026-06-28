@@ -31,9 +31,6 @@ function makeUserDotContent(heading: number | null): string {
   return `<div style="position:relative;width:20px;height:20px">${ring('0s', '-14px')}${ring('0.65s', '-7px')}${dot}${arrow}</div>`;
 }
 
-// Safety icons are detail-only markers. Kakao's smaller level means closer zoom.
-// Keep them hidden while the user is viewing the full route shape.
-const ICON_ZOOM_THRESHOLD = 3;
 const GANGNEUNG_BOUNDS = {
   south: 37.45,
   west: 128.65,
@@ -44,6 +41,22 @@ const GANGNEUNG_BOUNDS = {
 function isInsideGangneungBounds(lat: number, lng: number): boolean {
   return lat >= GANGNEUNG_BOUNDS.south && lat <= GANGNEUNG_BOUNDS.north
     && lng >= GANGNEUNG_BOUNDS.west && lng <= GANGNEUNG_BOUNDS.east;
+}
+
+function getRenderRouteNodes(nodes: LatLng[], maxPoints = 240): LatLng[] {
+  if (nodes.length <= maxPoints) return nodes;
+  const step = Math.ceil(nodes.length / maxPoints);
+  const rendered: LatLng[] = [];
+  for (let index = 0; index < nodes.length; index += step) {
+    rendered.push(nodes[index]);
+  }
+  const last = nodes[nodes.length - 1];
+  if (rendered[rendered.length - 1] !== last) rendered.push(last);
+  return rendered;
+}
+
+function toKakaoPath(nodes: LatLng[]) {
+  return getRenderRouteNodes(nodes).map((n) => new kakao.maps.LatLng(n.lat, n.lng));
 }
 
 function safetyIconSvg(featureId: string, size: number): string {
@@ -123,8 +136,10 @@ export default function KakaoMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const objectsRef = useRef<(kakao.maps.Polyline | kakao.maps.Marker | kakao.maps.CustomOverlay)[]>([]);
+  const routeLineRefs = useRef<Array<{ line: kakao.maps.Polyline; opacity: number }>>([]);
   // tracks only CCTV/safespot icon overlays for zoom-based visibility
   const iconOverlaysRef = useRef<kakao.maps.CustomOverlay[]>([]);
+  const safetyOverlayCacheRef = useRef<Map<string, { overlay: kakao.maps.CustomOverlay; content: string }>>(new Map());
   // separate overlay for the live user-position dot (not cleared on route redraw)
   const userOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   // 범죄주의구간 WMS 이미지 오버레이
@@ -133,10 +148,9 @@ export default function KakaoMap({
   const safemapWmsImgsRef = useRef<HTMLImageElement[]>([]);
   const safemapWmsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boundsEmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const markerBatchTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const markerBatchTokenRef = useRef(0);
   const lastBoundsKeyRef = useRef('');
   const lastFitRouteKeyRef = useRef('');
+  const mapInteractingRef = useRef(false);
   // ref so the zoom_changed closure always reads the latest prop value
   const showOverlaysRef = useRef(showOverlays);
   const hasRouteEvidenceRef = useRef(routeEvidencePoints.length > 0);
@@ -167,8 +181,7 @@ export default function KakaoMap({
     hasRouteEvidenceRef.current = routeEvidencePoints.length > 0;
     const map = mapRef.current;
     if (!map) return;
-    const level = map.getLevel();
-    const visible = (showOverlays || routeEvidencePoints.length > 0) && level <= ICON_ZOOM_THRESHOLD;
+    const visible = !mapInteractingRef.current && (showOverlays || routeEvidencePoints.length > 0);
     iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
   }, [showOverlays, routeEvidencePoints.length]);
 
@@ -207,16 +220,31 @@ export default function KakaoMap({
       if (boundsEmitTimerRef.current) clearTimeout(boundsEmitTimerRef.current);
       boundsEmitTimerRef.current = setTimeout(emitBounds, 450);
     };
+    const hideSafetyOverlaysWhileMoving = () => {
+      mapInteractingRef.current = true;
+      iconOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+      routeLineRefs.current.forEach(({ line }) => (line as any).setOptions({ strokeOpacity: 0.16 }));
+    };
+    const restoreSafetyOverlaysAfterMoving = () => {
+      mapInteractingRef.current = false;
+      const visible = showOverlaysRef.current || hasRouteEvidenceRef.current;
+      iconOverlaysRef.current.forEach((overlay) => overlay.setMap(visible ? map : null));
+      routeLineRefs.current.forEach(({ line, opacity }) => (line as any).setOptions({ strokeOpacity: opacity }));
+      emitBoundsSoon();
+    };
     emitBounds();
 
     // @ts-expect-error kakao types incomplete
+    kakao.maps.event.addListener(map, 'dragstart', hideSafetyOverlaysWhileMoving);
+    // @ts-expect-error kakao types incomplete
+    kakao.maps.event.addListener(map, 'zoom_start', hideSafetyOverlaysWhileMoving);
+    // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'zoom_changed', () => {
-      const level = map.getLevel();
-      const visible = (showOverlaysRef.current || hasRouteEvidenceRef.current) && level <= ICON_ZOOM_THRESHOLD;
+      const visible = !mapInteractingRef.current && (showOverlaysRef.current || hasRouteEvidenceRef.current);
       iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
     });
     // @ts-expect-error kakao types incomplete
-    kakao.maps.event.addListener(map, 'idle', emitBoundsSoon);
+    kakao.maps.event.addListener(map, 'idle', restoreSafetyOverlaysAfterMoving);
 
     // 지도 클릭 → 역지오코딩 후 콜백 호출
     // @ts-expect-error kakao types incomplete
@@ -475,45 +503,64 @@ export default function KakaoMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    markerBatchTokenRef.current += 1;
-    markerBatchTimersRef.current.forEach((timer) => clearTimeout(timer));
-    markerBatchTimersRef.current = [];
 
     // clear previous objects
     objectsRef.current.forEach((o) => o.setMap(null));
     objectsRef.current = [];
+    routeLineRefs.current = [];
     iconOverlaysRef.current = [];
 
     const add = (o: kakao.maps.Polyline | kakao.maps.Marker | kakao.maps.CustomOverlay) => {
       objectsRef.current.push(o);
     };
-    const markerJobs: (() => void)[] = [];
-    const scheduleMarkerJob = (job: () => void) => {
-      markerJobs.push(job);
+    const activeSafetyOverlayKeys = new Set<string>();
+    const scheduleSafetyOverlay = (key: string, position: LatLng, content: string) => {
+      activeSafetyOverlayKeys.add(key);
+      const cached = safetyOverlayCacheRef.current.get(key);
+      if (cached && cached.content === content) {
+        cached.overlay.setMap(mapInteractingRef.current ? null : map);
+        iconOverlaysRef.current.push(cached.overlay);
+        return;
+      }
+
+      if (cached) cached.overlay.setMap(null);
+      const overlayOptions = {
+        position: new kakao.maps.LatLng(position.lat, position.lng),
+        content,
+        zIndex: 20,
+      } as kakao.maps.CustomOverlayOptions & { zIndex: number };
+      const overlay = new kakao.maps.CustomOverlay(overlayOptions);
+      overlay.setMap(mapInteractingRef.current ? null : map);
+      safetyOverlayCacheRef.current.set(key, { overlay, content });
+      iconOverlaysRef.current.push(overlay);
     };
 
     // draw fast route (gray, behind)
     if (fastRoute && activeRoute === 'safe') {
+      const opacity = 0.5;
       const line = new kakao.maps.Polyline({
-        path: fastRoute.nodes.map((n) => new kakao.maps.LatLng(n.lat, n.lng)),
+        path: toKakaoPath(fastRoute.nodes),
         strokeWeight: 5,
         strokeColor: '#9CA3AF',
-        strokeOpacity: 0.5,
+        strokeOpacity: opacity,
         strokeStyle: 'dashed',
         map,
       });
+      routeLineRefs.current.push({ line, opacity });
       add(line);
     }
 
     // draw safe route (blue, front)
     if (safeRoute && activeRoute === 'safe') {
+      const opacity = 0.9;
       const line = new kakao.maps.Polyline({
-        path: safeRoute.nodes.map((n) => new kakao.maps.LatLng(n.lat, n.lng)),
+        path: toKakaoPath(safeRoute.nodes),
         strokeWeight: 7,
         strokeColor: '#3B82F6',
-        strokeOpacity: 0.9,
+        strokeOpacity: opacity,
         map,
       });
+      routeLineRefs.current.push({ line, opacity });
       add(line);
     }
 
@@ -521,7 +568,7 @@ export default function KakaoMap({
     if (fastRoute && activeRoute === 'fast') {
       const lineSafe = safeRoute
         ? new kakao.maps.Polyline({
-            path: safeRoute.nodes.map((n) => new kakao.maps.LatLng(n.lat, n.lng)),
+            path: toKakaoPath(safeRoute.nodes),
             strokeWeight: 5,
             strokeColor: '#3B82F6',
             strokeOpacity: 0.4,
@@ -529,22 +576,26 @@ export default function KakaoMap({
             map,
           })
         : null;
-      if (lineSafe) add(lineSafe);
+      if (lineSafe) {
+        routeLineRefs.current.push({ line: lineSafe, opacity: 0.4 });
+        add(lineSafe);
+      }
 
+      const opacity = 0.9;
       const line = new kakao.maps.Polyline({
-        path: fastRoute.nodes.map((n) => new kakao.maps.LatLng(n.lat, n.lng)),
+        path: toKakaoPath(fastRoute.nodes),
         strokeWeight: 7,
         strokeColor: '#F97316',
-        strokeOpacity: 0.9,
+        strokeOpacity: opacity,
         map,
       });
+      routeLineRefs.current.push({ line, opacity });
       add(line);
     }
 
-    // Safety icons are visible only when zoomed in. Route evidence points are
-    // independent from manual toggles, so the safe-route explanation stays visible.
+    // Safety icons and route evidence points follow the selected toggles at every zoom level.
     if (showOverlays || routeEvidencePoints.length > 0) {
-      const iconsVisible = map.getLevel() <= ICON_ZOOM_THRESHOLD;
+      const iconsVisible = true;
 
       const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;',
@@ -555,11 +606,12 @@ export default function KakaoMap({
       }[ch] ?? ch));
 
       const makeSafetyMarkerContent = (feature: ReturnType<typeof getSafetyFeature>, title: string, size = 30, label?: string) => {
+        const markerSize = Math.round(size * 0.58);
         const imageHtml = feature.iconFile
-          ? `<img src="/icons/${feature.iconFile}" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;object-fit:cover"/>`
-          : safetyIconSvg(feature.id, Math.round(size * 0.72));
+          ? `<img src="/icons/${feature.iconFile}" width="${markerSize}" height="${markerSize}" style="display:block;width:${markerSize}px;height:${markerSize}px;object-fit:cover"/>`
+          : safetyIconSvg(feature.id, Math.round(markerSize * 0.72));
         const iconHtml = (
-          `<div title="${title}" style="width:${size}px;height:${size}px;position:relative;border-radius:7px;background:${feature.color};border:3px solid #fff;box-shadow:none;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:default">` +
+          `<div title="${title}" style="width:${markerSize}px;height:${markerSize}px;position:relative;border-radius:4px;background:${feature.color};border:0;box-shadow:none;opacity:.72;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:default">` +
           `<div style="display:flex;align-items:center;justify-content:center">${imageHtml}</div>` +
           '</div>'
         );
@@ -582,30 +634,14 @@ export default function KakaoMap({
         const title = escapeHtml(point.name || feature.label);
         const label = point.featureId === 'childSafeHouse' && point.displayLabel ? escapeHtml(point.displayLabel) : undefined;
         const content = makeSafetyMarkerContent(feature, title, 30, label);
-        scheduleMarkerJob(() => {
-          const overlay = new kakao.maps.CustomOverlay({
-            position: new kakao.maps.LatLng(point.lat, point.lng),
-            content,
-          });
-          if (iconsVisible) overlay.setMap(map);
-          iconOverlaysRef.current.push(overlay);
-          add(overlay);
-        });
+        if (iconsVisible) scheduleSafetyOverlay(`safety:${point.id}`, point, content);
       }
 
       for (const c of cctvList) {
         const feature = getSafetyFeature('cctv');
         const title = escapeHtml(c.name || feature.label);
         const content = makeSafetyMarkerContent(feature, title);
-        scheduleMarkerJob(() => {
-          const overlay = new kakao.maps.CustomOverlay({
-            position: new kakao.maps.LatLng(c.lat, c.lng),
-            content,
-          });
-          if (iconsVisible) overlay.setMap(map);
-          iconOverlaysRef.current.push(overlay);
-          add(overlay);
-        });
+        if (iconsVisible) scheduleSafetyOverlay(`cctv:${c.lat.toFixed(6)},${c.lng.toFixed(6)}:${title}`, c, content);
       }
 
       for (const s of safeSpots) {
@@ -624,30 +660,18 @@ export default function KakaoMap({
             : 'food';
         const feature = getSafetyFeature(featureId);
         const content = makeSafetyMarkerContent(feature, escapeHtml(s.name || feature.label));
-        scheduleMarkerJob(() => {
-          const overlay = new kakao.maps.CustomOverlay({
-            position: new kakao.maps.LatLng(s.lat, s.lng),
-            content,
-          });
-          if (iconsVisible) overlay.setMap(map);
-          iconOverlaysRef.current.push(overlay);
-          add(overlay);
-        });
+        if (iconsVisible) scheduleSafetyOverlay(`safeSpot:${s.lat.toFixed(6)},${s.lng.toFixed(6)}:${featureId}:${s.name}`, s, content);
       }
 
       for (const light of streetlights) {
         const feature = getSafetyFeature('light');
         const content = makeSafetyMarkerContent(feature, escapeHtml(light.name || feature.label));
-        scheduleMarkerJob(() => {
-          const overlay = new kakao.maps.CustomOverlay({
-            position: new kakao.maps.LatLng(light.lat, light.lng),
-            content,
-          });
-          if (iconsVisible) overlay.setMap(map);
-          iconOverlaysRef.current.push(overlay);
-          add(overlay);
-        });
+        if (iconsVisible) scheduleSafetyOverlay(`light:${light.lat.toFixed(6)},${light.lng.toFixed(6)}:${light.name ?? ''}`, light, content);
       }
+    }
+    for (const [key, cached] of safetyOverlayCacheRef.current) {
+      if (activeSafetyOverlayKeys.has(key)) continue;
+      cached.overlay.setMap(null);
     }
 
     for (const h of (childSafeHouses ?? [])) {
@@ -727,25 +751,10 @@ export default function KakaoMap({
       map.setBounds(bounds);
     }
 
-    const batchToken = markerBatchTokenRef.current;
-    const runMarkerBatch = (startIndex: number) => {
-      if (batchToken !== markerBatchTokenRef.current) return;
-      const batchSize = 45;
-      const endIndex = Math.min(startIndex + batchSize, markerJobs.length);
-      for (let index = startIndex; index < endIndex; index += 1) {
-        markerJobs[index]();
-      }
-      if (endIndex < markerJobs.length) {
-        const timer = setTimeout(() => runMarkerBatch(endIndex), 16);
-        markerBatchTimersRef.current.push(timer);
-      }
-    };
-    runMarkerBatch(0);
-
     return () => {
-      markerBatchTokenRef.current += 1;
-      markerBatchTimersRef.current.forEach((timer) => clearTimeout(timer));
-      markerBatchTimersRef.current = [];
+      for (const cached of safetyOverlayCacheRef.current.values()) {
+        cached.overlay.setMap(null);
+      }
     };
 
   }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses, safetyPoints, routeEvidencePoints]);
