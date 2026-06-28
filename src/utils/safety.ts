@@ -1,7 +1,15 @@
-import type { RouteNode, CctvPoint, SafeSpot, StreetlightPoint, RouteCandidate } from '../types';
+import type { RouteNode, CctvPoint, SafeSpot, StreetlightPoint, RouteCandidate, SafetyFeatureId, SafetyPoint, WeekdayKey } from '../types';
+import { getSafetyFeature } from './safetyFeatures';
 
 const CCTV_RADIUS_M = 50;
 const SPOT_RADIUS_M = 80;
+
+function safetyRadiusMeters(featureId: SafetyFeatureId): number {
+  if (featureId === 'light') return LIGHT_RADIUS_M;
+  if (featureId === 'cctv') return CCTV_RADIUS_M;
+  return SPOT_RADIUS_M;
+}
+const DAY_KEYS: WeekdayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const LIGHT_RADIUS_M = 40; // 가로등/스마트보안등 커버 반경
 
 function toRad(deg: number) {
@@ -30,6 +38,37 @@ const isNight = (): boolean => {
   const h = new Date().getHours();
   return h >= 19 || h < 6;
 };
+
+function parseClock(value: string): number | null {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours === 24 && minutes === 0) return 24 * 60;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+export function isSafetyPointAvailable(point: SafetyPoint, at = new Date()): boolean {
+  if (point.featureId !== 'food') return true;
+  if (point.businessStatus && point.businessStatus !== 'active') return false;
+  if (point.confidence !== 'estimated') return false;
+
+  const dayKey = DAY_KEYS[at.getDay()];
+  const ranges = point.weeklyHours?.[dayKey] ?? [];
+  if (!ranges.length) return false;
+
+  const now = at.getHours() * 60 + at.getMinutes();
+  return ranges.some((range) => {
+    const open = parseClock(range.open);
+    const close = parseClock(range.close);
+    if (open === null || close === null) return false;
+    if (close === 24 * 60) return now >= open;
+    if (close <= open) return now >= open || now < close;
+    return now >= open && now < close;
+  });
+}
 
 function isEmergency(category: string): boolean {
   return ['경찰', '지구대', '파출소', '소방'].some((k) => category.includes(k));
@@ -90,6 +129,69 @@ export function calcSafetyScore(
   const score = ((cctvScore + spotScore + lightScore + roadScore) / len) * 1000;
 
   return { score, cctvCount, safeSpotCount };
+}
+
+export function calcSelectedSafetyScore(
+  nodes: RouteNode[],
+  points: SafetyPoint[],
+  selectedFeatures: SafetyFeatureId[]
+): { score: number; cctvCount: number; safeSpotCount: number; featureCounts: Partial<Record<SafetyFeatureId, number>> } {
+  const selected = new Set(selectedFeatures);
+  const night = isNight();
+  const sampled = nodes.filter((_, i) => i % 3 === 0);
+  const seen = new Set<string>();
+  const featureCounts: Partial<Record<SafetyFeatureId, number>> = {};
+  let pointScore = 0;
+  let roadScore = 0;
+  let currentUncovered = 0;
+  let longestUncovered = 0;
+
+  for (const node of sampled) {
+    const bestByFeature = new Map<SafetyFeatureId, { point: SafetyPoint; score: number }>();
+
+    for (const point of points) {
+      if (!selected.has(point.featureId)) continue;
+      if (!isSafetyPointAvailable(point)) continue;
+      const radius = safetyRadiusMeters(point.featureId);
+      const dist = distanceMeters(node, point);
+      if (dist > radius) continue;
+
+      const config = getSafetyFeature(point.featureId);
+      const baseWeight = night ? (point.nightWeight ?? config.nightWeight) : (point.weight ?? config.weight);
+      const closeness = 1 - Math.min(dist / radius, 1) * 0.45;
+      const score = baseWeight * closeness;
+      const current = bestByFeature.get(point.featureId);
+      if (!current || score > current.score) bestByFeature.set(point.featureId, { point, score });
+    }
+
+    if (bestByFeature.size === 0) {
+      currentUncovered += 1;
+      longestUncovered = Math.max(longestUncovered, currentUncovered);
+    } else {
+      currentUncovered = 0;
+    }
+
+    for (const item of bestByFeature.values()) {
+      pointScore += item.score;
+      seen.add(item.point.id);
+    }
+    if (node.mainRoad) roadScore += night ? 2 : 1;
+  }
+
+  for (const point of points) {
+    if (!seen.has(point.id)) continue;
+    featureCounts[point.featureId] = (featureCounts[point.featureId] ?? 0) + 1;
+  }
+
+  const len = routeLengthMeters(nodes);
+  const gapPenalty = longestUncovered * (night ? 2.4 : 1.2);
+  const score = (Math.max(0, pointScore + roadScore - gapPenalty) / len) * 1000;
+  return {
+    score,
+    cctvCount: featureCounts.cctv ?? 0,
+    safeSpotCount: seen.size - (featureCounts.cctv ?? 0),
+    featureCounts,
+  };
 }
 
 export function pickBestRoute(candidates: RouteCandidate[]): {
@@ -158,6 +260,33 @@ export function findSafeWaypoints(
     .sort((a, b) => b.weight - a.weight || a.distToRoute - b.distToRoute);
 
   return eligible.slice(0, count).map((c) => c.point);
+}
+
+export function findSelectedSafeWaypoints(
+  nodes: RouteNode[],
+  points: SafetyPoint[],
+  selectedFeatures: SafetyFeatureId[],
+  count = 3
+): { lat: number; lng: number }[] {
+  if (nodes.length < 6) return [];
+  const selected = new Set(selectedFeatures);
+  const origin = nodes[0];
+  const dest = nodes[nodes.length - 1];
+
+  return points
+    .filter((point) => selected.has(point.featureId))
+    .filter((point) => isSafetyPointAvailable(point))
+    .map((point) => ({
+      point: { lat: point.lat, lng: point.lng },
+      t: getProjectionT(point, origin, dest),
+      distToRoute: minDistToRoute(point, nodes),
+      weight: (isNight() ? point.nightWeight : point.weight) ?? getSafetyFeature(point.featureId).weight,
+    }))
+    .filter((candidate) => candidate.t >= 0.1 && candidate.t <= 0.9)
+    .filter((candidate) => candidate.distToRoute >= 20 && candidate.distToRoute <= 85)
+    .sort((a, b) => b.weight - a.weight || a.distToRoute - b.distToRoute)
+    .slice(0, count)
+    .map((candidate) => candidate.point);
 }
 
 // 경로가 "골목 진입 후 되돌아 나오는" U턴 패턴인지 검사

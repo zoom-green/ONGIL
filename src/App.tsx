@@ -1,30 +1,69 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import KakaoMap from './components/KakaoMap';
 import SearchBar from './components/SearchBar';
 import RouteCard from './components/RouteCard';
 import CompanionCall from './components/CompanionCall';
 import type { CompanionDisplayMode } from './components/CompanionCall';
 import EmergencyScreen from './components/EmergencyScreen';
+import SettingsModal from './components/SettingsModal';
 import { useUserLocation } from './hooks/useUserLocation';
-import type { LatLng, Place, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint, ChildSafeHousePoint } from './types';
-import { CHILD_SAFE_HOUSES } from './data/childSafeHouses';
-import { fetchPedestrianRoutes } from './utils/tmap';
+import type { LatLng, MapBounds, Place, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint, ChildSafeHousePoint, SafetyFeatureConfig, SafetyFeatureId, SafetyPoint } from './types';
+import { fetchFastPedestrianRoute, fetchSelectedPedestrianRoutes } from './utils/tmap';
 import { loadCctvData } from './utils/cctv';
 import { loadStreetlightData } from './utils/streetlight';
-import { fetchSafeSpots } from './utils/kakaoLocal';
-import { pickBestRoute, distanceMeters } from './utils/safety';
+import { fetchSafeSpots, fetchSafeSpotsInBounds } from './utils/kakaoLocal';
+import { fetchChildSafeHouses } from './utils/childSafeHouses';
+import { pickBestRoute, distanceMeters, minDistToRoute, isSafetyPointAvailable } from './utils/safety';
 import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
 import { useShakeDetection } from './hooks/useShakeDetection';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
-import GuardianModal from './components/GuardianModal';
 import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
+import { DEFAULT_SELECTED_FEATURES, SAFETY_FEATURES, getSafetyFeature } from './utils/safetyFeatures';
+import {
+  cctvToSafetyPoints,
+  streetlightsToSafetyPoints,
+  kakaoSafeSpotsToSafetyPoints,
+  childSafeHousesToSafetyPoints,
+  loadGyodongFoodSafetyPoints,
+  fetchLifeSafetyPoints,
+  mergeSafetyPoints,
+} from './utils/safetyPoints';
 
 const GUARDIAN_STORAGE_KEY = 'ongil_guardian_phones_v2';
+const SETTINGS_STORAGE_KEY = 'ongil_safety_settings_v1';
 const CRIME_WMS_KEY = 'W5ZQMXVH-W5ZQ-W5ZQ-W5ZQ-W5ZQMXVHPG';
-
 const GANGNEUNG_CENTER: LatLng = { lat: 37.7519, lng: 128.8761 };
+const EMPTY_SAFETY_POINTS: SafetyPoint[] = [];
+const EMPTY_WMS_LAYERS: string[] = [];
 
 type AppStep = 'search' | 'routes';
+
+interface SafetySettings {
+  safeRouteEnabled: boolean;
+  selectedFeatures: SafetyFeatureId[];
+  shareIntervalMinutes: 2 | 4 | 8;
+}
+
+function loadSafetySettings(): SafetySettings {
+  const fallback: SafetySettings = {
+    safeRouteEnabled: false,
+    selectedFeatures: DEFAULT_SELECTED_FEATURES,
+    shareIntervalMinutes: 4,
+  };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '');
+    const selected = Array.isArray(parsed?.selectedFeatures)
+      ? parsed.selectedFeatures.filter((id: string) => SAFETY_FEATURES.some((feature) => feature.id === id))
+      : fallback.selectedFeatures;
+    return {
+      safeRouteEnabled: Boolean(parsed?.safeRouteEnabled),
+      selectedFeatures: selected.length > 0 ? selected : fallback.selectedFeatures,
+      shareIntervalMinutes: parsed?.shareIntervalMinutes === 2 || parsed?.shareIntervalMinutes === 8 ? parsed.shareIntervalMinutes : 4,
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 function loadGuardianPhones(): [string, string] {
   const stored = localStorage.getItem(GUARDIAN_STORAGE_KEY);
@@ -34,7 +73,7 @@ function loadGuardianPhones(): [string, string] {
       if (Array.isArray(parsed)) return [parsed[0] ?? '', parsed[1] ?? ''];
     } catch {}
   }
-  // 이전 버전 단일 번호 마이그레이션
+  // ?댁쟾 踰꾩쟾 ?⑥씪 踰덊샇 留덉씠洹몃젅?댁뀡
   const old = localStorage.getItem('ongil_guardian_phone') ?? '';
   return [old, ''];
 }
@@ -47,7 +86,7 @@ export default function App() {
 
   const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
   const [manualOrigin, setManualOrigin] = useState<Place | null>(null);
-  // 경로 계산 시 확정된 출발지 — GPS 틱마다 변하는 effectiveOrigin 대신 KakaoMap에 전달
+  // 寃쎈줈 怨꾩궛 ???뺤젙??異쒕컻吏 ??GPS ?깅쭏??蹂?섎뒗 effectiveOrigin ???KakaoMap???꾨떖
   const [lockedOrigin, setLockedOrigin] = useState<LatLng | null>(null);
 
   const effectiveOrigin: LatLng | null = manualOrigin?.position ?? gpsOrigin;
@@ -58,13 +97,23 @@ export default function App() {
   const [activeRoute, setActiveRoute] = useState<'safe' | 'fast'>('safe');
   const [cctvList, setCctvList] = useState<CctvPoint[]>(GANGNEUNG_CCTV_FALLBACK);
   const [safeSpots, setSafeSpots] = useState<SafeSpot[]>([]);
+  const [viewportSafeSpots, setViewportSafeSpots] = useState<SafeSpot[]>([]);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const [streetlightData, setStreetlightData] = useState<StreetlightPoint[]>([]);
-  const [showOverlays, setShowOverlays] = useState(true);
+  const [childSafeHouses, setChildSafeHouses] = useState<ChildSafeHousePoint[]>([]);
+  const [gyodongFoodPoints, setGyodongFoodPoints] = useState<SafetyPoint[]>([]);
+  const [lifeSafetyPoints, setLifeSafetyPoints] = useState<SafetyPoint[]>([]);
+  const [safetySettings, setSafetySettings] = useState<SafetySettings>(loadSafetySettings);
+  const [showOverlays] = useState(true);
+  const [visibleFeatures, setVisibleFeatures] = useState<Record<SafetyFeatureId, boolean>>(() =>
+    Object.fromEntries(SAFETY_FEATURES.map((feature) => [feature.id, false])) as Record<SafetyFeatureId, boolean>
+  );
+  const [childSafeHouseError, setChildSafeHouseError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapClickInfo, setMapClickInfo] = useState<{ lat: number; lng: number; address: string } | null>(null);
 
-  // 실시간 GPS 추적 훅 — watchPosition 기반, heading 포함
+  // ?ㅼ떆媛?GPS 異붿쟻 ????watchPosition 湲곕컲, heading ?ы븿
   const { location: userLocation, ready: locationReady } = useUserLocation();
   const [companionDisplay, setCompanionDisplay] = useState<CompanionDisplayMode | 'hidden'>('hidden');
   const [selectedPersona, setSelectedPersona] = useState<Persona>('mom');
@@ -76,9 +125,14 @@ export default function App() {
   const lastSmsLocRef = useRef<LatLng | null>(null);
 
   const [guardianPhones, setGuardianPhones] = useState<[string, string]>(loadGuardianPhones);
-  const [showGuardianModal, setShowGuardianModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [walkStarted, setWalkStarted] = useState(false);
+  const [routeStatus, setRouteStatus] = useState<'idle' | 'onRoute' | 'offRoute'>('idle');
+  const [sharePrompt, setSharePrompt] = useState<{ message: string; createdAt: number } | null>(null);
+  const lastSharePromptRef = useRef<number>(0);
+  const kakaoSearchKeyRef = useRef('');
 
-  // Kakao Maps SDK 폴링 초기화
+  // Kakao Maps SDK init
   useEffect(() => {
     let stopped = false;
     let attempts = 0;
@@ -97,8 +151,8 @@ export default function App() {
           const st = `kakao=${typeof (window as any).kakao}, maps=${typeof (window as any).kakao?.maps}`;
           setKakaoError(
             `Kakao 지도 SDK 로드 실패 (15초 초과)\n상태: ${st}\n\n` +
-            'Kakao 개발자 콘솔 → 내 앱 → JavaScript 키 수정\n' +
-            '→ JavaScript SDK 도메인에 http://localhost:5173 추가 후 저장'
+            'Kakao 개발자 콘솔 > 내 앱 > JavaScript 키 수정\n' +
+            'JavaScript SDK 도메인에 http://localhost:5173 추가 후 저장'
           );
         }
       }
@@ -106,28 +160,38 @@ export default function App() {
     return () => { stopped = true; clearInterval(timer); };
   }, []);
 
-  // userLocation → gpsOrigin 동기화 (첫 GPS 확정 시 지도 중심도 이동)
+  // userLocation ??gpsOrigin ?숆린??(泥?GPS ?뺤젙 ??吏??以묒떖???대룞)
   useEffect(() => {
     if (userLocation) {
       const loc: LatLng = { lat: userLocation.lat, lng: userLocation.lng };
       setGpsOrigin(loc);
-      // 지도 중심이 아직 강릉 기본값이면 첫 GPS 좌표로 스냅
+      if (walkStarted) setUserPos(loc);
+      // 吏??以묒떖???꾩쭅 媛뺣쫱 湲곕낯媛믪씠硫?泥?GPS 醫뚰몴濡??ㅻ깄
       setUserPos((prev) =>
         prev.lat === GANGNEUNG_CENTER.lat && prev.lng === GANGNEUNG_CENTER.lng ? loc : prev
       );
     } else if (locationReady && !userLocation) {
-      // GPS 권한 거부 등 실패 → 강릉 센터 폴백
+      // GPS 沅뚰븳 嫄곕? ???ㅽ뙣 ??媛뺣쫱 ?쇳꽣 ?대갚
       setGpsOrigin(GANGNEUNG_CENTER);
     }
-  }, [userLocation, locationReady]);
+  }, [userLocation, locationReady, walkStarted]);
 
-  // CCTV + 가로등 데이터 로드
+  // CCTV + 媛濡쒕벑 ?곗씠??濡쒕뱶
   useEffect(() => {
-    loadCctvData().then(setCctvList);
-    loadStreetlightData().then(setStreetlightData);
-  }, []);
+    const routeNeeds = (id: SafetyFeatureId) => safetySettings.safeRouteEnabled && safetySettings.selectedFeatures.includes(id);
+    if ((visibleFeatures.cctv || routeNeeds('cctv')) && cctvList === GANGNEUNG_CCTV_FALLBACK) loadCctvData().then(setCctvList);
+    if ((visibleFeatures.light || routeNeeds('light')) && streetlightData.length === 0) loadStreetlightData().then(setStreetlightData);
+    if ((visibleFeatures.food || routeNeeds('food')) && gyodongFoodPoints.length === 0) loadGyodongFoodSafetyPoints().then(setGyodongFoodPoints);
+    if ((visibleFeatures.police || visibleFeatures.fire || visibleFeatures.toilet || routeNeeds('police') || routeNeeds('fire') || routeNeeds('toilet')) && lifeSafetyPoints.length === 0) fetchLifeSafetyPoints().then(setLifeSafetyPoints);
+    if ((visibleFeatures.childSafeHouse || routeNeeds('childSafeHouse')) && childSafeHouses.length === 0) fetchChildSafeHouses()
+      .then((items) => {
+        setChildSafeHouses(items);
+        if (items.length === 0) setChildSafeHouseError('\uAC15\uB989\uC2DC \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.');
+      })
+      .catch(() => setChildSafeHouseError('\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'));
+  }, [visibleFeatures, safetySettings.safeRouteEnabled, safetySettings.selectedFeatures, cctvList, streetlightData.length, gyodongFoodPoints.length, lifeSafetyPoints.length, childSafeHouses.length]);
 
-  // SOS 트리거 함수
+  // SOS ?몃━嫄??⑥닔
   const triggerSOSByButton = useCallback(() => {
     setEmergencyTrigger('sos');
     setEmergencyActive(true);
@@ -138,10 +202,10 @@ export default function App() {
     setEmergencyActive(true);
   }, []);
 
-  // 핸드폰 세게 2번 흔들기 감지 → SOS
+  // ?몃뱶???멸쾶 2踰??붾뱾湲?媛먯? ??SOS
   useShakeDetection(triggerSOSByShake, true);
 
-  // 동행 중 500m마다 보호자 SMS
+  // ?숉뻾 以?500m留덈떎 蹂댄샇??SMS
   useEffect(() => {
     if (!companionActive || !gpsOrigin) return;
     const valid = guardianPhones.filter(p => p.trim());
@@ -157,15 +221,21 @@ export default function App() {
     }
   }, [gpsOrigin, companionActive, guardianPhones, destination]);
 
-  // 동행 종료 시 SMS 위치 초기화
+  // Reset SMS location when companion mode stops
   useEffect(() => {
     if (!companionActive) lastSmsLocRef.current = null;
   }, [companionActive]);
 
-  const saveGuardianPhones = (phones: [string, string]) => {
+  const saveSettings = (settings: SafetySettings, phones: [string, string]) => {
+    setSafetySettings(settings);
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
     setGuardianPhones(phones);
     localStorage.setItem(GUARDIAN_STORAGE_KEY, JSON.stringify(phones));
-    setShowGuardianModal(false);
+    setShowSettingsModal(false);
+  };
+
+  const toggleVisibleFeature = (id: SafetyFeatureId) => {
+    setVisibleFeatures((current) => ({ ...current, [id]: !current[id] }));
   };
 
   const handleOriginSelect = useCallback((place: Place) => {
@@ -177,6 +247,55 @@ export default function App() {
     setManualOrigin(null);
     if (gpsOrigin) setUserPos(gpsOrigin);
   }, [gpsOrigin]);
+
+  const childSafeHousePoints = useMemo(
+    () => childSafeHousesToSafetyPoints(childSafeHouses),
+    [childSafeHouses]
+  );
+
+  useEffect(() => {
+    if (!showOverlays || !mapBounds) {
+      setViewportSafeSpots([]);
+      return;
+    }
+    const kakaoFeatureIds = SAFETY_FEATURES
+      .map((feature) => feature.id)
+      .filter((id) => visibleFeatures[id])
+      .filter((id) => id === 'convenience' || id === 'food' || id === 'police' || id === 'fire' || id === 'medical');
+
+    if (kakaoFeatureIds.length === 0) {
+      setViewportSafeSpots([]);
+      kakaoSearchKeyRef.current = '';
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const featureKey = kakaoFeatureIds.join(',');
+      const boundsKey = [
+        mapBounds.sw.lat,
+        mapBounds.sw.lng,
+        mapBounds.ne.lat,
+        mapBounds.ne.lng,
+      ].map((value) => value.toFixed(3)).join(',');
+      const requestKey = `${featureKey}:${boundsKey}`;
+      if (kakaoSearchKeyRef.current === requestKey) return;
+      kakaoSearchKeyRef.current = requestKey;
+
+      fetchSafeSpotsInBounds(mapBounds, kakaoFeatureIds)
+        .then((items) => {
+          if (!cancelled) setViewportSafeSpots(items);
+        })
+        .catch(() => {
+          if (!cancelled) setViewportSafeSpots([]);
+        });
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mapBounds, showOverlays, visibleFeatures]);
 
   const handleDestinationSelect = useCallback(
     async (place: Place) => {
@@ -192,20 +311,41 @@ export default function App() {
         };
         const spots = await fetchSafeSpots(center, 1500);
         setSafeSpots(spots);
-        const routes = await fetchPedestrianRoutes(effectiveOrigin, place.position, cctvList, spots, streetlightData);
-        const { safeRoute: sr, fastRoute: fr } = pickBestRoute(routes);
-        setSafeRoute(sr);
-        setFastRoute(fr);
-        setActiveRoute('safe');
+        const nextAllPoints = mergeSafetyPoints([
+          ...cctvToSafetyPoints(cctvList),
+          ...streetlightsToSafetyPoints(streetlightData),
+          ...kakaoSafeSpotsToSafetyPoints(spots),
+          ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
+          ...gyodongFoodPoints,
+          ...lifeSafetyPoints,
+          ...childSafeHousePoints,
+        ]);
+        const enabledForRoute = safetySettings.safeRouteEnabled && safetySettings.selectedFeatures.length > 0;
+        const fast = await fetchFastPedestrianRoute(effectiveOrigin, place.position);
+        setFastRoute(fast);
+        if (enabledForRoute) {
+          const routePoints = nextAllPoints.filter((point) => safetySettings.selectedFeatures.includes(point.featureId));
+          const routes = await fetchSelectedPedestrianRoutes(effectiveOrigin, place.position, routePoints, safetySettings.selectedFeatures);
+          const { safeRoute: sr } = pickBestRoute(routes);
+          setSafeRoute(sr);
+          setActiveRoute('safe');
+        } else {
+          setSafeRoute(null);
+          setActiveRoute('fast');
+        }
         setLockedOrigin(effectiveOrigin);
+        setWalkStarted(false);
+        setRouteStatus('idle');
+        setSharePrompt(null);
+        lastSharePromptRef.current = 0;
       } catch (e) {
         console.error(e);
-        setError('경로를 불러오지 못했습니다. API 키 또는 네트워크를 확인해주세요.');
+        setError('寃쎈줈瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲?? API ???먮뒗 ?ㅽ듃?뚰겕瑜??뺤씤?댁＜?몄슂.');
       } finally {
         setLoading(false);
       }
     },
-    [effectiveOrigin, cctvList]
+    [effectiveOrigin, cctvList, streetlightData, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints, safetySettings]
   );
 
   const handleReset = () => {
@@ -215,6 +355,24 @@ export default function App() {
     setFastRoute(null);
     setLockedOrigin(null);
     setError(null);
+    setWalkStarted(false);
+    setRouteStatus('idle');
+    setSharePrompt(null);
+    lastSharePromptRef.current = 0;
+  };
+
+  const handleStartWalk = () => {
+    setWalkStarted(true);
+    setSharePrompt(null);
+    lastSharePromptRef.current = Date.now();
+    if (userLocation) setUserPos({ lat: userLocation.lat, lng: userLocation.lng });
+  };
+
+  const handleShareLocation = () => {
+    const valid = guardianPhones.filter((phone) => phone.trim());
+    if (!sharePrompt || valid.length === 0) return;
+    sendGuardianSMSAll(valid, sharePrompt.message);
+    setSharePrompt(null);
   };
 
   const handleMapClick = useCallback((pos: { lat: number; lng: number }, address: string) => {
@@ -244,65 +402,162 @@ export default function App() {
   }, [mapClickInfo, handleDestinationSelect]);
 
   const activeNodes = useMemo(() => {
-    if (!safeRoute) return [];
-    return (activeRoute === 'safe' ? safeRoute : (fastRoute ?? safeRoute)).nodes;
+    const route = activeRoute === 'safe' ? safeRoute : fastRoute;
+    return route?.nodes ?? [];
   }, [safeRoute, fastRoute, activeRoute]);
 
-  const sampledNodes = useMemo(
-    () => activeNodes.filter((_, i) => i % 4 === 0),
-    [activeNodes]
+  const hasVisibleFeature = useMemo(
+    () => Object.values(visibleFeatures).some(Boolean),
+    [visibleFeatures]
   );
 
-  const displayCctv = useMemo((): CctvPoint[] => {
-    if (sampledNodes.length === 0) return [];
-    return cctvList
-      .filter((c) => sampledNodes.some((n) => distanceMeters(c, n) <= 80))
-      .slice(0, 200);
-  }, [sampledNodes, cctvList]);
+  const displaySafetyPoints = useMemo((): SafetyPoint[] => {
+    if (!showOverlays || !hasVisibleFeature) return EMPTY_SAFETY_POINTS;
+    const capByFeature: Partial<Record<SafetyFeatureId, number>> = {
+      cctv: 180,
+      light: 1200,
+      food: 180,
+      convenience: 120,
+      childSafeHouse: 100,
+      police: 120,
+      fire: 80,
+      medical: 80,
+      toilet: 120,
+    };
+    const inCurrentBounds = (point: LatLng) => {
+      if (!mapBounds) return true;
+      return point.lat >= mapBounds.sw.lat
+        && point.lat <= mapBounds.ne.lat
+        && point.lng >= mapBounds.sw.lng
+        && point.lng <= mapBounds.ne.lng;
+    };
+    const takeVisible = <T extends LatLng>(
+      items: T[],
+      featureId: SafetyFeatureId,
+      mapItem: (item: T, index: number) => SafetyPoint
+    ) => {
+      if (!visibleFeatures[featureId]) return [];
+      const cap = capByFeature[featureId] ?? 500;
+      const selected: SafetyPoint[] = [];
+      for (let index = 0; index < items.length && selected.length < cap; index += 1) {
+        const item = items[index];
+        if (!inCurrentBounds(item)) continue;
+        selected.push(mapItem(item, index));
+      }
+      return selected;
+    };
+    const takeSafetyPoints = (items: SafetyPoint[], featureId: SafetyFeatureId) => {
+      if (!visibleFeatures[featureId]) return [];
+      const cap = capByFeature[featureId] ?? 500;
+      const selected: SafetyPoint[] = [];
+      for (const point of items) {
+        if (selected.length >= cap) break;
+        if (point.featureId !== featureId || !inCurrentBounds(point)) continue;
+        if (!isSafetyPointAvailable(point)) continue;
+        selected.push(point);
+      }
+      return selected;
+    };
+    const cctvConfig = getSafetyFeature('cctv');
+    const lightConfig = getSafetyFeature('light');
+    const kakaoDisplayPoints = kakaoSafeSpotsToSafetyPoints([...safeSpots, ...viewportSafeSpots]);
+    const selected = [
+      ...takeVisible(cctvList, 'cctv', (point, index) => ({
+        id: `cctv:${point.lat.toFixed(6)},${point.lng.toFixed(6)}:${index}`,
+        name: point.name ?? 'CCTV',
+        lat: point.lat,
+        lng: point.lng,
+        featureId: 'cctv',
+        category: cctvConfig.label,
+        source: point.source ?? 'Gangneung CCTV',
+        weight: cctvConfig.weight,
+        nightWeight: cctvConfig.nightWeight,
+      })),
+      ...takeVisible(streetlightData, 'light', (point, index) => ({
+        id: `light:${point.lat.toFixed(6)},${point.lng.toFixed(6)}:${index}`,
+        name: point.name ?? lightConfig.label,
+        lat: point.lat,
+        lng: point.lng,
+        featureId: 'light',
+        category: lightConfig.label,
+        source: point.source ?? 'Gangneung streetlight',
+        weight: lightConfig.weight,
+        nightWeight: lightConfig.nightWeight,
+      })),
+      ...takeSafetyPoints(kakaoDisplayPoints, 'convenience'),
+      ...takeSafetyPoints(kakaoDisplayPoints, 'food'),
+      ...takeSafetyPoints(kakaoDisplayPoints, 'police'),
+      ...takeSafetyPoints(kakaoDisplayPoints, 'fire'),
+      ...takeSafetyPoints(kakaoDisplayPoints, 'medical'),
+      ...takeSafetyPoints(gyodongFoodPoints, 'food'),
+      ...takeSafetyPoints(lifeSafetyPoints, 'police'),
+      ...takeSafetyPoints(lifeSafetyPoints, 'fire'),
+      ...takeSafetyPoints(lifeSafetyPoints, 'toilet'),
+      ...takeSafetyPoints(childSafeHousePoints, 'childSafeHouse'),
+    ];
+    return mergeSafetyPoints(selected);
+  }, [
+    cctvList,
+    streetlightData,
+    safeSpots,
+    viewportSafeSpots,
+    gyodongFoodPoints,
+    lifeSafetyPoints,
+    childSafeHousePoints,
+    hasVisibleFeature,
+    mapBounds,
+    showOverlays,
+    visibleFeatures,
+  ]);
 
-  const displaySpots = useMemo((): SafeSpot[] => {
-    if (sampledNodes.length === 0) return [];
-    return safeSpots
-      .filter((s) => sampledNodes.some((n) => distanceMeters(s, n) <= 100))
-      .slice(0, 100);
-  }, [sampledNodes, safeSpots]);
+  useEffect(() => {
+    if (!walkStarted || !userLocation || activeNodes.length === 0) {
+      if (!walkStarted) setRouteStatus('idle');
+      return;
+    }
+    const dist = minDistToRoute(userLocation, activeNodes);
+    setRouteStatus(dist > 50 ? 'offRoute' : 'onRoute');
+  }, [walkStarted, userLocation, activeNodes]);
 
-  const displayStreetlights = useMemo((): StreetlightPoint[] => {
-    if (sampledNodes.length === 0) return [];
-    return streetlightData
-      .filter((l) => sampledNodes.some((n) => distanceMeters(l, n) <= 60))
-      .slice(0, 300);
-  }, [sampledNodes, streetlightData]);
+  useEffect(() => {
+    if (!walkStarted || !userLocation || activeNodes.length === 0) return;
+    const valid = guardianPhones.filter((phone) => phone.trim());
+    if (valid.length === 0) return;
+    const now = Date.now();
+    const intervalMs = safetySettings.shareIntervalMinutes * 60 * 1000;
+    if (lastSharePromptRef.current && now - lastSharePromptRef.current < intervalMs) return;
 
-  const displayChildSafeHouses = useMemo((): ChildSafeHousePoint[] => {
-    if (sampledNodes.length === 0) return [];
-    return CHILD_SAFE_HOUSES
-      .filter((h) => sampledNodes.some((n) => distanceMeters(h, n) <= 120))
-      .slice(0, 100);
-  }, [sampledNodes]);
+    const dist = minDistToRoute(userLocation, activeNodes);
+    const statusText = dist > 50
+      ? `寃쎈줈瑜?踰쀬뼱?ъ뒿?덈떎. 寃쎈줈?먯꽌 ??${Math.round(dist)}m ?⑥뼱???덉뒿?덈떎.`
+      : '寃쎈줈瑜??곕씪 ?대룞 以묒엯?덈떎.';
+    const mapsLink = `https://maps.google.com/?q=${userLocation.lat.toFixed(5)},${userLocation.lng.toFixed(5)}`;
+    const routeName = activeRoute === 'safe' ? '안심길' : '빠른길';
+    const message = `[ON:湲??꾩튂怨듭쑀]\n${routeName} ?대룞 以?n${destination ? `紐⑹쟻吏: ${destination.name}\n` : ''}?곹깭: ${statusText}\n?꾩옱 ?꾩튂: ${mapsLink}`;
+    lastSharePromptRef.current = now;
+    setSharePrompt({ message, createdAt: now });
+  }, [walkStarted, userLocation, activeNodes, guardianPhones, safetySettings.shareIntervalMinutes, activeRoute, destination]);
 
-  const guardianSetCount = guardianPhones.filter(p => p.trim()).length;
-
-  // SDK 오류 화면
+  // SDK ?ㅻ쪟 ?붾㈃
   if (kakaoError) {
     return (
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', boxSizing: 'border-box' }}>
-        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F', marginBottom: '16px' }}>ON:吉 온길</div>
+        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F', marginBottom: '16px' }}>ON:???④만</div>
         <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '16px', padding: '20px 24px', maxWidth: '360px', width: '100%' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#DC2626', marginBottom: '12px' }}>지도 SDK 초기화 실패</div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#DC2626', marginBottom: '12px' }}>吏??SDK 珥덇린???ㅽ뙣</div>
           <pre style={{ fontSize: '13px', color: '#374151', whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.7 }}>{kakaoError}</pre>
         </div>
       </div>
     );
   }
 
-  // SDK 로딩 중 화면
+  // SDK 濡쒕뵫 以??붾㈃
   if (!kakaoReady) {
     return (
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC' }}>
-        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F' }}>ON:吉 온길</div>
+        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F' }}>ON:???④만</div>
         <div style={{ width: '36px', height: '36px', border: '3px solid #E5E7EB', borderTop: '3px solid #3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <div style={{ fontSize: '13px', color: '#94A3B8' }}>지도 불러오는 중...</div>
+        <div style={{ fontSize: '13px', color: '#94A3B8' }}>吏??遺덈윭?ㅻ뒗 以?..</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -311,52 +566,46 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', position: 'relative', overflow: 'hidden' }}>
 
-      {/* 헤더 */}
+      {/* ?ㅻ뜑 */}
       <div style={{ background: '#fff', padding: '14px 16px 10px', borderBottom: '1px solid #F1F5F9', zIndex: 10, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
           {step === 'routes' && (
-            <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', padding: '0', color: '#374151' }}>←</button>
+            <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', padding: '0', color: '#374151' }}>{'<'}</button>
           )}
           <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>ON:吉 온길</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>ON:???④만</div>
             <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '1px' }}>강릉 야간 안심 이동 서비스</div>
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {/* 보호자 설정 버튼 — 항상 표시, 미설정 시 빨간색 경고 */}
-            <button
-              onClick={() => setShowGuardianModal(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '4px',
-                fontSize: '11px', padding: '6px 11px', borderRadius: '999px',
-                border: `1.5px solid ${guardianSetCount > 0 ? '#10B981' : '#EF4444'}`,
-                background: guardianSetCount > 0 ? '#ECFDF5' : '#FFF1F2',
-                color: guardianSetCount > 0 ? '#059669' : '#DC2626',
-                cursor: 'pointer', fontWeight: 700,
-                fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
-              }}
-            >
-              {guardianSetCount > 0 ? `👥 보호자 ${guardianSetCount}명` : '⚠️ 보호자 미설정'}
-            </button>
-            {step === 'routes' && (
-              <button onClick={() => setShowOverlays((v) => !v)} style={{ fontSize: '11px', padding: '5px 10px', borderRadius: '999px', border: '1px solid #E5E7EB', background: showOverlays ? '#EFF6FF' : '#fff', color: showOverlays ? '#2563EB' : '#6B7280', cursor: 'pointer', fontWeight: 600 }}>
-                {showOverlays ? '📍 레이어 ON' : '📍 레이어 OFF'}
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            style={{
+              marginLeft: 'auto',
+              fontSize: '11px',
+              padding: '6px 11px',
+              borderRadius: '999px',
+              border: '1px solid #E5E7EB',
+              background: '#fff',
+              color: '#334155',
+              cursor: 'pointer',
+              fontWeight: 800,
+            }}
+          >
+            설정
+          </button>
         </div>
 
         {!locationReady ? (
-          <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>위치 확인 중...</div>
+          <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>?꾩튂 ?뺤씤 以?..</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {/* 출발지 행 */}
+            {/* 異쒕컻吏 ??*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>출발</span>
+              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>異쒕컻</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`origin-${step}-${Boolean(manualOrigin)}`}
                   onSelect={handleOriginSelect}
-                  placeholder={manualOrigin ? manualOrigin.name : '현재 위치 (GPS)'}
+                  placeholder={manualOrigin ? manualOrigin.name : '?꾩옱 ?꾩튂 (GPS)'}
                   defaultValue={manualOrigin?.name ?? ''}
                   userPosition={gpsOrigin}
                 />
@@ -367,13 +616,13 @@ export default function App() {
                   title="현재 위치로 초기화"
                   style={{ padding: '8px', borderRadius: '8px', border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
                 >
-                  📍
+                  GPS
                 </button>
               )}
             </div>
-            {/* 목적지 행 */}
+            {/* 紐⑹쟻吏 ??*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>도착</span>
+              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>?꾩갑</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`dest-${step}`}
@@ -386,9 +635,40 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {showOverlays && (
+          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingTop: '10px', paddingBottom: 2 }}>
+            {SAFETY_FEATURES.map((feature) => {
+              const active = visibleFeatures[feature.id];
+              return (
+                <button
+                  key={feature.id}
+                  onClick={() => toggleVisibleFeature(feature.id)}
+                  style={{
+                    flex: '0 0 auto',
+                    border: 0,
+                    background: 'transparent',
+                    color: active ? '#111827' : '#64748B',
+                    padding: '2px 0',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                  }}
+                >
+                  <SafetyMarkerBadge feature={feature} active={active} size={32} />
+                  <span>{feature.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* 긴급신고 화면 (최우선 오버레이) */}
+      {/* 湲닿툒?좉퀬 ?붾㈃ (理쒖슦???ㅻ쾭?덉씠) */}
       {emergencyActive && (
         <EmergencyScreen
           guardianPhones={guardianPhones}
@@ -399,16 +679,16 @@ export default function App() {
       )}
 
 
-      {/* 보호자 연락처 설정 모달 */}
-      {showGuardianModal && (
-        <GuardianModal
+      {showSettingsModal && (
+        <SettingsModal
+          initialSettings={safetySettings}
           initialPhones={guardianPhones}
-          onSave={saveGuardianPhones}
-          onClose={() => setShowGuardianModal(false)}
+          onSave={saveSettings}
+          onClose={() => setShowSettingsModal(false)}
         />
       )}
 
-      {/* 지도 영역 */}
+      {/* 吏???곸뿭 */}
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         <KakaoMap
           center={userPos}
@@ -417,18 +697,77 @@ export default function App() {
           safeRoute={safeRoute}
           fastRoute={fastRoute}
           activeRoute={activeRoute}
-          cctvList={showOverlays ? displayCctv : []}
-          safeSpots={showOverlays ? displaySpots : []}
-          streetlights={showOverlays ? displayStreetlights : []}
-          childSafeHouses={showOverlays ? displayChildSafeHouses : []}
+          cctvList={[]}
+          safeSpots={[]}
+          streetlights={[]}
+          childSafeHouses={[]}
+          safetyPoints={displaySafetyPoints}
+          safemapWmsLayers={EMPTY_WMS_LAYERS}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
+          onBoundsChange={hasVisibleFeature ? setMapBounds : undefined}
           userLocation={userLocation}
           crimeWmsKey={CRIME_WMS_KEY}
-          showCrimeOverlay={showOverlays}
+          showCrimeOverlay={showOverlays && hasVisibleFeature}
         />
 
-        {/* 지도 클릭 시 출발지/도착지 설정 바텀시트 */}
+        {childSafeHouseError && (
+          <div style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            right: 12,
+            zIndex: 30,
+            background: '#FFF7ED',
+            border: '1px solid #FDBA74',
+            borderRadius: '12px',
+            padding: '10px 12px',
+            color: '#9A3412',
+            fontSize: '12px',
+            fontWeight: 700,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          }}>
+            {childSafeHouseError}
+          </div>
+        )}
+
+        {/* 吏???대┃ ??異쒕컻吏/?꾩갑吏 ?ㅼ젙 諛뷀??쒗듃 */}
+        {sharePrompt && (
+          <div style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            right: 12,
+            zIndex: 32,
+            background: '#ECFDF5',
+            border: '1px solid #86EFAC',
+            borderRadius: '12px',
+            padding: '12px',
+            boxShadow: '0 6px 18px rgba(15,23,42,0.16)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: '#047857' }}>蹂댄샇???꾩튂 怨듭쑀 ?쒓컙???섏뿀?댁슂</div>
+                <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
+                  {routeStatus === 'offRoute' ? '寃쎈줈 ?댄깉 ?곹깭媛 ?④퍡 ?꾨떖?쇱슂.' : '寃쎈줈 ?곕씪 ?대룞 以??곹깭媛 ?④퍡 ?꾨떖?쇱슂.'}
+                </div>
+              </div>
+              <button
+                onClick={handleShareLocation}
+                style={{ border: 0, background: '#059669', color: '#fff', borderRadius: 10, padding: '9px 11px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+              >
+                臾몄옄 ?닿린
+              </button>
+              <button
+                onClick={() => setSharePrompt(null)}
+                style={{ border: 0, background: '#D1FAE5', color: '#047857', borderRadius: 10, width: 32, height: 32, fontSize: 18, cursor: 'pointer' }}
+              >
+                횞
+              </button>
+            </div>
+          </div>
+        )}
+
         {mapClickInfo && !loading && (
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 30,
@@ -439,46 +778,53 @@ export default function App() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
               <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', marginBottom: '3px' }}>선택한 위치</div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', marginBottom: '3px' }}>?좏깮???꾩튂</div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1.4 }}>{mapClickInfo.address}</div>
               </div>
               <button
                 onClick={() => setMapClickInfo(null)}
                 style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9CA3AF', padding: '2px 4px', lineHeight: 1 }}
               >
-                ✕
-              </button>
+                ??              </button>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={handleSetOriginFromMap}
                 style={{
-                  flex: 1, padding: '13px 8px', borderRadius: '12px',
-                  background: '#EFF6FF', color: '#2563EB',
-                  border: '1.5px solid #BFDBFE',
-                  fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                  flex: 1, padding: '15px 10px', borderRadius: '18px',
+                  background: 'linear-gradient(180deg, #3D63F1 0%, #6FB9D8 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                  boxShadow: '0 8px 18px rgba(56,102,242,0.25)',
                   fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 }}
               >
-                📍 출발지로 설정
+                <WhitePinIcon accent="#3D63F1" />
+                異쒕컻吏濡??ㅼ젙
               </button>
               <button
                 onClick={handleSetDestFromMap}
                 style={{
-                  flex: 1, padding: '13px 8px', borderRadius: '12px',
-                  background: '#FEF2F2', color: '#DC2626',
-                  border: '1.5px solid #FECACA',
-                  fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                  flex: 1, padding: '15px 10px', borderRadius: '18px',
+                  background: 'linear-gradient(180deg, #D64F77 0%, #DD7168 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                  boxShadow: '0 8px 18px rgba(242,51,127,0.25)',
                   fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 }}
               >
-                🏁 도착지로 설정
+                <WhitePinIcon accent="#D64F77" />
+                ?꾩갑吏濡??ㅼ젙
               </button>
             </div>
           </div>
         )}
 
-        {/* SOS 버튼 (항상 표시, 지도 좌하단) */}
+        {/* SOS 踰꾪듉 (吏??醫뚰븯?? */}
         <div style={{
           position: 'absolute', bottom: '20px', left: '16px', zIndex: 25,
         }}>
@@ -506,7 +852,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* AI 동행 시작 버튼 (지도 우하단 플로팅) */}
+        {/* AI ?숉뻾 ?쒖옉 踰꾪듉 (吏???고븯?? */}
         {!loading && !companionActive && (
           <button
             onClick={() => setShowPersonaModal(true)}
@@ -521,11 +867,11 @@ export default function App() {
               fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
             }}
           >
-            👥 AI 음성 대화
+            AI 음성 대화
           </button>
         )}
 
-        {/* 페르소나 선택 모달 */}
+        {/* ?섎Ⅴ?뚮굹 ?좏깮 紐⑤떖 */}
         {showPersonaModal && (
           <div
             onClick={() => setShowPersonaModal(false)}
@@ -544,11 +890,10 @@ export default function App() {
               }}
             >
               <p style={{ textAlign: 'center', fontWeight: 700, fontSize: '16px', margin: '0 0 8px' }}>
-                누구와 통화할까요?
+                ?꾧뎄? ?듯솕?좉퉴??
               </p>
               <p style={{ textAlign: 'center', fontSize: '12px', color: '#9CA3AF', margin: '0 0 24px' }}>
-                선택한 페르소나와 한국어로 자유롭게 대화해요
-              </p>
+                ?좏깮???섎Ⅴ?뚮굹? ?쒓뎅?대줈 ?먯쑀濡?쾶 ??뷀빐??              </p>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                 {(['mom', 'dad', 'brother'] as Persona[]).map(p => {
                   const selected = selectedPersona === p;
@@ -588,7 +933,7 @@ export default function App() {
                   fontSize: '15px', fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                {PERSONA_LABELS[selectedPersona]}와 통화하기
+                {PERSONA_LABELS[selectedPersona]}? ?듯솕?섍린
               </button>
             </div>
           </div>
@@ -597,12 +942,12 @@ export default function App() {
         {loading && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', zIndex: 12 }}>
             <div style={{ width: '36px', height: '36px', border: '3px solid #E5E7EB', borderTop: '3px solid #3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            <div style={{ fontSize: '14px', color: '#374151', fontWeight: 600 }}>안전 경로 분석 중...</div>
+            <div style={{ fontSize: '14px', color: '#374151', fontWeight: 600 }}>?덉쟾 寃쎈줈 遺꾩꽍 以?..</div>
           </div>
         )}
       </div>
 
-      {/* AI 음성 대화 */}
+      {/* AI ?뚯꽦 ???*/}
       {companionDisplay !== 'hidden' && (
         <CompanionCall
           key={companionKey}
@@ -613,43 +958,66 @@ export default function App() {
         />
       )}
 
-      {/* 경로 카드 패널 — 동행 중에는 숨김 */}
+      {/* 寃쎈줈 移대뱶 ?⑤꼸 ???숉뻾 以묒뿉???④? */}
       {step === 'routes' && !loading && companionDisplay === 'hidden' && (
         <div style={{ background: '#fff', padding: '16px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
           {error ? (
-            <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>⚠️ {error}</div>
-          ) : safeRoute ? (
+            <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>?좑툘 {error}</div>
+          ) : (safeRoute || fastRoute) ? (
             <>
               <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '10px', fontWeight: 500 }}>
-                📍 {destination?.name}까지의 경로
+                ?뱧 {destination?.name}源뚯???寃쎈줈
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <RouteCard
-                  type="safe"
-                  route={safeRoute}
-                  active={activeRoute === 'safe'}
-                  onClick={() => setActiveRoute('safe')}
-                />
+                {safeRoute && (
+                  <RouteCard
+                    type="safe"
+                    route={safeRoute}
+                    selectedFeatureIds={safetySettings.selectedFeatures}
+                    active={activeRoute === 'safe'}
+                    onClick={() => {
+                      setActiveRoute('safe');
+                      setWalkStarted(false);
+                      setRouteStatus('idle');
+                    }}
+                  />
+                )}
                 {fastRoute && (
                   <RouteCard
                     type="fast"
                     route={fastRoute}
                     active={activeRoute === 'fast'}
-                    onClick={() => setActiveRoute('fast')}
+                    onClick={() => {
+                      setActiveRoute('fast');
+                      setWalkStarted(false);
+                      setRouteStatus('idle');
+                    }}
                   />
                 )}
               </div>
-              {showOverlays && (
-                <div style={{ display: 'flex', gap: '10px', marginTop: '12px', padding: '10px 12px', background: '#F8FAFC', borderRadius: '10px', flexWrap: 'wrap' }}>
-                  <LegendItem label="CCTV" iconFile="cctv.png" />
-                  <LegendItem label="가로등" iconFile="streetlight.png" />
-                  <LegendItem label="편의점" iconFile="convenience.png" />
-                  <LegendItem label="카페" iconFile="cafe.png" />
-                  <LegendItem label="음식점" iconFile="restaurant.png" />
-                  <LegendItem label="경찰·지구대" iconFile="police.png" />
-                  <LegendItem label="소방서" iconFile="fire.png" />
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px' }}>
+                <button
+                  onClick={handleStartWalk}
+                  disabled={walkStarted}
+                  style={{
+                    flex: 1,
+                    height: 42,
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: walkStarted ? '#E2E8F0' : '#1E3A5F',
+                    color: walkStarted ? '#64748B' : '#fff',
+                    fontWeight: 900,
+                    cursor: walkStarted ? 'default' : 'pointer',
+                  }}
+                >
+                  {walkStarted ? '이동 추적 중' : '이동 시작'}
+                </button>
+                {walkStarted && (
+                  <div style={{ minWidth: 112, textAlign: 'center', fontSize: '12px', fontWeight: 900, color: routeStatus === 'offRoute' ? '#DC2626' : '#059669' }}>
+                    {routeStatus === 'offRoute' ? '寃쎈줈 ?댄깉' : '寃쎈줈 ?곕씪 ?대룞'}
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
         </div>
@@ -668,11 +1036,69 @@ export default function App() {
   );
 }
 
-function LegendItem({ label, iconFile }: { label: string; iconFile: string }) {
+function WhitePinIcon({ accent }: { accent: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-      <img src={`/icons/${iconFile}`} width="16" height="16" style={{ borderRadius: '3px', flexShrink: 0, display: 'block' }} />
-      <span style={{ fontSize: '11px', color: '#6B7280' }}>{label}</span>
-    </div>
+    <svg width="22" height="28" viewBox="0 0 24 32" fill="none" style={{ display: 'block', flex: '0 0 auto' }}>
+      <path d="M12 31s10-10.1 10-19A10 10 0 1 0 2 12c0 8.9 10 19 10 19z" fill="#fff" />
+      <circle cx="12" cy="12" r="4.2" fill={accent} />
+    </svg>
+  );
+}
+
+function SafetyFeatureIcon({ id, size = 20 }: { id: SafetyFeatureId; size?: number }) {
+  const stroke = 'currentColor';
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: 2.3, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+
+  if (id === 'cctv') {
+    return <svg {...common}><path d="M4 11a8 8 0 0 1 16 0v3H4z" /><path d="M7 14v3h10v-3" /><circle cx="12" cy="13" r="2.2" /><path d="M12 17v3" /><path d="M9 20h6" /></svg>;
+  }
+  if (id === 'food') {
+    return <svg {...common}><path d="M7 3v8" /><path d="M4.5 3v4.5a2.5 2.5 0 0 0 5 0V3" /><path d="M7 11v10" /><path d="M16 3c2 1.8 3 4 3 6.5 0 2-1.1 3.5-3 3.5h-1V3z" /><path d="M16 13v8" /><path d="M11.5 5.5h2.5" /></svg>;
+  }
+  if (id === 'convenience') {
+    return <svg {...common}><path d="M4 9h16v11H4z" /><path d="M7 20v-6h10v6" /><path d="M9 20v-6" /><path d="M15 20v-6" /><path d="M8 6h8l2 3H6z" /><text x="12" y="13" textAnchor="middle" fontSize="6.2" fill="currentColor" stroke="none" fontWeight="900">24</text></svg>;
+  }
+  if (id === 'police') {
+    return <svg {...common}><path d="M12 3l7 3v5c0 4.5-3 7.8-7 10-4-2.2-7-5.5-7-10V6l7-3z" /><path d="M8.5 10.5l2.4 2.4 4.8-5" /><text x="12" y="18" textAnchor="middle" fontSize="5.2" fill="currentColor" stroke="none" fontWeight="900">112</text></svg>;
+  }
+  if (id === 'fire') {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none"><text x="12" y="13.5" textAnchor="middle" fontSize="10" fill="currentColor" fontWeight="900" fontStyle="italic">119</text><path d="M5.5 17.2h4.5M11.2 17.2h4.5M16.6 17.2h2.4" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" /><path d="M4.8 20h4.3M10.5 20h4.3M16 20h3.2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" /></svg>;
+  }
+  if (id === 'light') {
+    return <svg {...common}><path d="M8 21h7" /><path d="M9.5 18h4" /><path d="M10 18V7a4 4 0 0 1 8 0v3" /><path d="M17 10h3" /><path d="M14.5 13h7" /><path d="M15.5 13a3 3 0 0 1 5 0" /><path d="M18 13v2.5" /><path d="M15.5 17l-2 2" /><path d="M20.5 17l2 2" /></svg>;
+  }
+  if (id === 'childSafeHouse') {
+    return <svg {...common}><path d="M4 11.5L12 4l8 7.5" /><path d="M6.5 10.5V20h11v-9.5" /><path d="M10 20v-5h4v5" /><path d="M9 11.5h6" /></svg>;
+  }
+  if (id === 'medical') {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" /></svg>;
+  }
+  if (id === 'toilet') {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8" cy="8" r="1.5" fill="#fff" /><circle cx="16" cy="8" r="1.5" fill="#fff" /><path d="M7 11h2l1 6H6z" fill="#fff" /><path d="M15 11h2l1 6h-4z" fill="#fff" /><path d="M12 6v12" stroke="#fff" strokeWidth="1.3" /></svg>;
+  }
+  return <svg {...common}><path d="M12 4v10" /><path d="M12 18h.01" /><path d="M6 8a6 6 0 0 1 12 0" /></svg>;
+}
+
+function SafetyMarkerBadge({ feature, active, size = 36 }: { feature: SafetyFeatureConfig; active: boolean; size?: number }) {
+
+  return (
+    <span
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        background: active ? feature.color : '#E5E7EB',
+        border: '3px solid #fff',
+        boxShadow: 'none',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      <span style={{ color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <SafetyFeatureIcon id={feature.id} size={Math.round(size * 0.66)} />
+      </span>
+    </span>
   );
 }

@@ -1,5 +1,5 @@
-import type { LatLng, Place, RouteCandidate, RouteNode, CctvPoint, SafeSpot, StreetlightPoint } from '../types';
-import { calcSafetyScore, distanceMeters, findSafeWaypoints, hasBacktracking } from './safety';
+import type { LatLng, Place, RouteCandidate, RouteNode, CctvPoint, SafeSpot, StreetlightPoint, SafetyFeatureId, SafetyPoint } from '../types';
+import { calcSafetyScore, calcSelectedSafetyScore, distanceMeters, findSafeWaypoints, findSelectedSafeWaypoints, hasBacktracking } from './safety';
 
 const TMAP_KEY = import.meta.env.VITE_TMAP_KEY as string;
 const TMAP_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1&format=json';
@@ -80,6 +80,60 @@ function routesAreSame(a: RouteNode[], b: RouteNode[]): boolean {
   return distanceMeters(q1A, q1B) < 40;
 }
 
+function nearestProgressOnRoute(point: RouteNode, route: RouteNode[]): { dist: number; progress: number } {
+  let bestDist = Infinity;
+  let bestIndex = 0;
+  for (let index = 0; index < route.length; index += 3) {
+    const dist = distanceMeters(point, route[index]);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = index;
+    }
+  }
+  return {
+    dist: bestDist,
+    progress: route.length > 1 ? bestIndex / (route.length - 1) : 0,
+  };
+}
+
+function hasSideSpurFromBaseline(baseline: RouteNode[], candidate: RouteNode[]): boolean {
+  if (baseline.length < 6 || candidate.length < 6) return false;
+
+  let inExcursion = false;
+  let startProgress = 0;
+  let maxDist = 0;
+
+  for (let index = 0; index < candidate.length; index += 2) {
+    const probe = nearestProgressOnRoute(candidate[index], baseline);
+
+    if (!inExcursion && probe.dist > 45) {
+      inExcursion = true;
+      startProgress = probe.progress;
+      maxDist = probe.dist;
+      continue;
+    }
+
+    if (!inExcursion) continue;
+    maxDist = Math.max(maxDist, probe.dist);
+
+    if (probe.dist <= 35) {
+      const progressDelta = Math.abs(probe.progress - startProgress);
+      if (maxDist >= 65 && progressDelta < 0.12) return true;
+      inExcursion = false;
+      maxDist = 0;
+    }
+  }
+
+  return false;
+}
+
+function requiredSafetyGain(detourRatio: number): number {
+  if (detourRatio <= 1.05) return 1.08;
+  if (detourRatio <= 1.12) return 1.18;
+  if (detourRatio <= 1.18) return 1.32;
+  return 1.5;
+}
+
 export async function fetchPedestrianRoutes(
   origin: LatLng,
   destination: LatLng,
@@ -107,14 +161,15 @@ export async function fetchPedestrianRoutes(
       const candidate = result.value;
       const detourRatio =
         rawA.totalDistance > 0 ? candidate.totalDistance / rawA.totalDistance : 1;
-      // 동일 경로이거나 우회 25% 초과 → 기각 (기존 35%에서 강화)
-      if (routesAreSame(rawA.nodes, candidate.nodes) || detourRatio > 1.25) continue;
+      // 동일 경로이거나 우회 20% 초과 → 기각
+      if (routesAreSame(rawA.nodes, candidate.nodes) || detourRatio > 1.2) continue;
       // 골목 진입 후 되돌아 나오는 U턴·대폭 우회 패턴 → 기각
       if (hasBacktracking(candidate.nodes, 0.15)) continue;
+      if (hasSideSpurFromBaseline(rawA.nodes, candidate.nodes)) continue;
 
       const scoreC = calcSafetyScore(candidate.nodes, cctvList, safeSpots, streetlights);
-      // 직선 경로(scoreA) 대비 최소 15% 이상 안전해야 채택 (조금 돌아가는 게 의미 있으려면 확실히 더 안전해야 함)
-      if (scoreC.score < scoreA.score * 1.15) continue;
+      const minScore = scoreA.score > 0 ? scoreA.score * requiredSafetyGain(detourRatio) : scoreA.score + 0.8;
+      if (scoreC.score < minScore) continue;
       // 현재 최선 안심길보다도 안전 점수 높아야 교체
       if (scoreC.score > scoreB.score) {
         rawB = candidate;
@@ -139,6 +194,81 @@ export async function fetchPedestrianRoutes(
     safetyScore: scoreB.score,
     cctvCount: scoreB.cctvCount,
     safeSpotCount: scoreB.safeSpotCount,
+  };
+
+  return [candidateA, candidateB];
+}
+
+export async function fetchFastPedestrianRoute(
+  origin: LatLng,
+  destination: LatLng
+): Promise<RouteCandidate> {
+  const raw = await callTmapPedestrian(origin, destination);
+  return {
+    nodes: raw.nodes,
+    totalDistance: raw.totalDistance,
+    totalTime: raw.totalTime,
+    safetyScore: 0,
+    cctvCount: 0,
+    safeSpotCount: 0,
+    featureCounts: {},
+  };
+}
+
+export async function fetchSelectedPedestrianRoutes(
+  origin: LatLng,
+  destination: LatLng,
+  safetyPoints: SafetyPoint[],
+  selectedFeatures: SafetyFeatureId[]
+): Promise<RouteCandidate[]> {
+  const rawA = await callTmapPedestrian(origin, destination);
+  const scoreA = calcSelectedSafetyScore(rawA.nodes, safetyPoints, selectedFeatures);
+  const waypoints = findSelectedSafeWaypoints(rawA.nodes, safetyPoints, selectedFeatures, 2);
+
+  let rawB = rawA;
+  let scoreB = scoreA;
+
+  if (waypoints.length > 0) {
+    const waypointResults = await Promise.allSettled(
+      waypoints.map((wp) => callTmapPedestrian(origin, destination, wp))
+    );
+
+    for (const result of waypointResults) {
+      if (result.status !== 'fulfilled') continue;
+      const candidate = result.value;
+      const detourRatio = rawA.totalDistance > 0 ? candidate.totalDistance / rawA.totalDistance : 1;
+      if (routesAreSame(rawA.nodes, candidate.nodes) || detourRatio > 1.2) continue;
+      if (hasBacktracking(candidate.nodes, 0.15)) continue;
+      if (hasSideSpurFromBaseline(rawA.nodes, candidate.nodes)) continue;
+
+      const scoreC = calcSelectedSafetyScore(candidate.nodes, safetyPoints, selectedFeatures);
+      const minScore = scoreA.score > 0 ? scoreA.score * requiredSafetyGain(detourRatio) : scoreA.score + 0.8;
+      if (scoreC.score < minScore) continue;
+      if (scoreC.score > scoreB.score) {
+        rawB = candidate;
+        scoreB = scoreC;
+      }
+    }
+  }
+
+  const candidateA: RouteCandidate = {
+    nodes: rawA.nodes,
+    totalDistance: rawA.totalDistance,
+    totalTime: rawA.totalTime,
+    safetyScore: scoreA.score,
+    cctvCount: scoreA.cctvCount,
+    safeSpotCount: scoreA.safeSpotCount,
+    featureCounts: scoreA.featureCounts,
+  };
+
+  const candidateB: RouteCandidate = {
+    nodes: rawB.nodes,
+    totalDistance: rawB.totalDistance,
+    totalTime: rawB.totalTime,
+    safetyScore: scoreB.score,
+    cctvCount: scoreB.cctvCount,
+    safeSpotCount: scoreB.safeSpotCount,
+    featureCounts: scoreB.featureCounts,
   };
 
   return [candidateA, candidateB];

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -Command \"$p3001 = netstat -ano 2>$null | Select-String ':3001 '; $p5173 = netstat -ano 2>$null | Select-String ':5173 '; if (-not $p3001 -or -not $p5173) { Start-Process powershell -ArgumentList '-NoProfile -WindowStyle Hidden -Command cd C:\\Users\\nyj05\\ongil; npm run dev' -WindowStyle Hidden }\"",
+            "shell": "powershell",
+            "async": true,
+            "statusMessage": "온길 개발 서버 확인 중..."
+          }
+        ]
+      }
+    ]
+  }
+}

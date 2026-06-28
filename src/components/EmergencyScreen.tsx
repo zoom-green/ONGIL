@@ -47,6 +47,9 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
     ? `https://maps.google.com/?q=${locationRef.current.lat},${locationRef.current.lng}`
     : '위치 확인 중';
   const smsMsg = `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
+  const progress = Math.max(0, Math.min(1, countdown / 5));
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
 
   useEffect(() => {
     stopAlarmRef.current = createAlarm();
@@ -86,11 +89,11 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 999,
+      position: 'fixed', inset: 0, zIndex: 900,
       background: '#7F1D1D',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '52px 20px 40px',
+      padding: '52px 20px 118px',
       fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
       animation: triggered ? 'none' : 'emergency-flash 0.5s ease-in-out 3',
       overflowY: 'auto',
@@ -117,13 +120,34 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
         /* 카운트다운 */
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
           <div style={{
-            width: '120px', height: '120px', borderRadius: '50%',
-            background: 'rgba(255,255,255,0.15)',
-            border: '3px solid rgba(255,255,255,0.4)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            width: 138,
+            height: 138,
+            borderRadius: '50%',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
-            <div style={{ fontSize: '48px', fontWeight: 900, color: '#fff', lineHeight: 1 }}>{countdown}</div>
-            <div style={{ fontSize: '11px', color: '#FCA5A5', marginTop: '2px' }}>초 후 112</div>
+            <svg width="138" height="138" viewBox="0 0 138 138" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+              <circle cx="69" cy="69" r={radius} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="7" />
+              <circle
+                cx="69"
+                cy="69"
+                r={radius}
+                fill="none"
+                stroke="#fff"
+                strokeWidth="7"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - progress)}
+                style={{ transition: 'stroke-dashoffset 0.35s ease' }}
+              />
+            </svg>
+            <div style={{ fontSize: '52px', fontWeight: 900, color: '#fff', lineHeight: 1, position: 'relative' }}>{countdown}</div>
+            <div style={{ fontSize: '11px', color: '#FDE2D6', marginTop: '7px', fontWeight: 900, position: 'relative', width: 76, lineHeight: 1.2, wordBreak: 'keep-all' }}>
+              초 후<br />112 연결
+            </div>
           </div>
           <div style={{
             background: 'rgba(0,0,0,0.3)', borderRadius: '12px',
