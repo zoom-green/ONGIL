@@ -88,8 +88,9 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
     <button
       onClick={onClick}
       style={{
-        flex: 1,
-        width: '100%',
+        flex: '1 1 0',
+        width: 'auto',
+        minWidth: 0,
         border: `2px solid ${active ? accent : '#E5E7EB'}`,
         background: active ? bgActive : '#fff',
         borderRadius: 18,
@@ -116,14 +117,14 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
             flexShrink: 0,
           }}
         >
-          {isSafe ? '🛡' : '⚡'}
+          {isSafe ? '안' : '⚡'}
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: '#111827' }}>{label}</span>
+            <span style={{ fontSize: 15, fontWeight: 900, color: '#111827', whiteSpace: 'nowrap' }}>{label}</span>
             {isSafe && active && (
-              <span style={{ border: '1.5px solid #4F6F64', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 900, color: '#4F6F64' }}>
+              <span style={{ border: '1.5px solid #4F6F64', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 900, color: '#4F6F64', whiteSpace: 'nowrap' }}>
                 추천
               </span>
             )}
@@ -140,7 +141,7 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
       {isSafe && safeFeatures.length > 0 && (
         <div style={{
           display: 'flex',
-          gap: 16,
+          gap: 14,
           marginTop: 11,
           paddingTop: 10,
           borderTop: '1px solid rgba(79,111,100,0.18)',
@@ -149,7 +150,7 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
           whiteSpace: 'nowrap',
         }}>
           {safeFeatures.map((feature) => (
-            <div key={feature.id} style={{ minWidth: 44, flex: '0 0 auto' }}>
+            <div key={feature.id} style={{ minWidth: 40, flex: '0 0 auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <FeatureTile feature={feature} />
                 <span style={{ fontSize: 15, fontWeight: 900, color: feature.color, lineHeight: 1 }}>{feature.count}</span>

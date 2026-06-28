@@ -989,7 +989,7 @@ export default function App() {
               <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '10px', fontWeight: 500 }}>
                 {destination?.name}까지의 경로
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', minWidth: 0, alignItems: 'stretch' }}>
                 {safeRoute && (
                   <RouteCard
                     type="safe"
