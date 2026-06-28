@@ -116,9 +116,13 @@ function mergeItems(items: ChildSafeHouseApiItem[]): ChildSafeHouseApiItem[] {
   }, []);
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function fetchJsonWithInsecureAgent<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    https.get(
+    const request = https.get(
       url,
       {
         agent: new https.Agent({ rejectUnauthorized: false }),
@@ -139,7 +143,11 @@ function fetchJsonWithInsecureAgent<T>(url: string): Promise<T> {
           }
         });
       }
-    ).on('error', reject);
+    );
+    request.setTimeout(7000, () => {
+      request.destroy(new Error('Request timeout'));
+    });
+    request.on('error', reject);
   });
 }
 
@@ -152,58 +160,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const esntlId = process.env.SAFEDREAM_ESNTL_ID;
   const authKey = process.env.SAFEDREAM_AUTH_KEY;
   const vworldKey = process.env.VWORLD_API_KEY;
-  const vworldDomain = process.env.VWORLD_API_DOMAIN ?? 'http://localhost';
-  if (!esntlId || !authKey || !vworldKey) {
-    res.status(500).json({ error: 'SAFEDREAM_ESNTL_ID, SAFEDREAM_AUTH_KEY, and VWORLD_API_KEY are required' });
-    return;
-  }
-
-  const safeDreamParams = new URLSearchParams({
-    esntlId,
-    authKey,
-    pageIndex: '1',
-    pageUnit: '100',
-    clArray: '09',
-    minY: '37.55',
-    minX: '128.70',
-    maxY: '37.95',
-    maxX: '129.10',
-  });
-  const vworldParams = new URLSearchParams({
-    service: 'data',
-    version: '2.0',
-    request: 'GetFeature',
-    key: vworldKey,
-    domain: vworldDomain,
-    data: 'LT_P_MGPRTFA',
-    format: 'json',
-    size: '1000',
-    page: '1',
-    crs: 'EPSG:4326',
-    geomFilter: 'BOX(128.70,37.55,129.10,37.95)',
-  });
+  const protocol = String(req.headers['x-forwarded-proto'] ?? 'https').split(',')[0];
+  const host = req.headers.host;
+  const vworldDomain = process.env.VWORLD_API_DOMAIN ?? (host ? `${protocol}://${host}` : 'http://localhost');
 
   try {
-    const [safeDreamData, vworldData] = await Promise.all([
-      fetchJsonWithInsecureAgent<{ list?: SafeDreamItem[] }>(`${SAFEDREAM_API_URL}?${safeDreamParams}`),
-      fetchJsonWithInsecureAgent<{
+    const safeDreamRequest = esntlId && authKey
+      ? (() => {
+          const safeDreamParams = new URLSearchParams({
+            esntlId,
+            authKey,
+            pageIndex: '1',
+            pageUnit: '100',
+            clArray: '09',
+            minY: '37.55',
+            minX: '128.70',
+            maxY: '37.95',
+            maxX: '129.10',
+          });
+          return fetchJsonWithInsecureAgent<{ list?: SafeDreamItem[] }>(`${SAFEDREAM_API_URL}?${safeDreamParams}`);
+        })()
+      : Promise.reject(new Error('SafeDream credentials are missing'));
+
+    const vworldRequest = vworldKey
+      ? (() => {
+          const vworldParams = new URLSearchParams({
+            service: 'data',
+            version: '2.0',
+            request: 'GetFeature',
+            key: vworldKey,
+            domain: vworldDomain,
+            data: 'LT_P_MGPRTFA',
+            format: 'json',
+            size: '1000',
+            page: '1',
+            crs: 'EPSG:4326',
+            geomFilter: 'BOX(128.70,37.55,129.10,37.95)',
+          });
+          return fetchJsonWithInsecureAgent<{
         response?: {
           status?: string;
           error?: { text?: string };
           result?: { featureCollection?: { features?: VworldFeature[] } };
         };
-      }>(`${VWORLD_DATA_API_URL}?${vworldParams}`),
+          }>(`${VWORLD_DATA_API_URL}?${vworldParams}`);
+        })()
+      : Promise.reject(new Error('VWorld API key is missing'));
+
+    const [safeDreamResult, vworldResult] = await Promise.allSettled([
+      safeDreamRequest,
+      vworldRequest,
     ]);
 
-    if (vworldData.response?.status !== 'OK') {
-      res.status(502).json({ error: vworldData.response?.error?.text ?? 'VWorld request failed' });
-      return;
-    }
-
+    const safeDreamData = safeDreamResult.status === 'fulfilled' ? safeDreamResult.value : { list: [] };
+    const vworldData = vworldResult.status === 'fulfilled' ? vworldResult.value : {};
+    const vworldOk = vworldData.response?.status === 'OK';
     const safeDreamItems = (safeDreamData.list ?? [])
       .map(toSafeDreamItem)
       .filter((item): item is ChildSafeHouseApiItem => Boolean(item));
-    const vworldItems = (vworldData.response?.result?.featureCollection?.features ?? [])
+    const vworldItems = (vworldOk ? vworldData.response?.result?.featureCollection?.features ?? [] : [])
       .map(toVworldItem)
       .filter((item): item is ChildSafeHouseApiItem => Boolean(item));
     const items = mergeItems([...safeDreamItems, ...vworldItems]);
@@ -215,6 +230,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         safeDream: safeDreamItems.length,
         molit: vworldItems.length,
         merged: items.length,
+      },
+      warnings: {
+        safeDream: safeDreamResult.status === 'rejected' ? getErrorMessage(safeDreamResult.reason) : null,
+        vworld: vworldResult.status === 'rejected'
+          ? getErrorMessage(vworldResult.reason)
+          : vworldOk
+            ? null
+            : vworldData.response?.error?.text ?? 'VWorld request failed',
+        vworldDomain,
       },
       items,
     });
