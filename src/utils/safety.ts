@@ -163,6 +163,38 @@ function isTier2(type: SafetyElementType): boolean {
   return !isTier1(type);
 }
 
+function safetyElementTypeToFeatureId(type: SafetyElementType): SafetyFeatureId {
+  const featureByType: Record<SafetyElementType, SafetyFeatureId> = {
+    CCTV: 'cctv',
+    streetlight: 'light',
+    convenience_store: 'convenience',
+    cafe_restaurant: 'food',
+    police: 'police',
+    fire_station: 'fire',
+    safety_guardian_house: 'childSafeHouse',
+    emergency_bell: 'toilet',
+    emergency_medical: 'medical',
+  };
+  return featureByType[type];
+}
+
+function countFeaturesNearRoute(polyline: LatLng[], elements: SafetyElement[]): Partial<Record<SafetyFeatureId, number>> {
+  const counted = new Set<string>();
+  const counts: Partial<Record<SafetyFeatureId, number>> = {};
+
+  for (const element of elements) {
+    const radius = isTier1(element.type) ? TIER1_THRESHOLDS_M[element.type] : TIER2_ROUTE_RADIUS_M;
+    const projection = nearestProjectionOnRoute(element.position, polyline);
+    if (projection.distanceToRoute > radius || counted.has(element.id)) continue;
+
+    counted.add(element.id);
+    const featureId = safetyElementTypeToFeatureId(element.type);
+    counts[featureId] = (counts[featureId] ?? 0) + 1;
+  }
+
+  return counts;
+}
+
 export function projectTier1(
   polyline: LatLng[],
   elements: SafetyElement[]
@@ -288,11 +320,13 @@ export function scoreRouteCandidate(
   elements: SafetyElement[]
 ): RouteCandidate {
   const score = scoreRoute(route.nodes, elements);
+  const featureCounts = countFeaturesNearRoute(route.nodes, elements);
   return {
     ...route,
     safetyScore: -score.darkZoneCount,
-    cctvCount: countTier1NearRoute(route.nodes, elements, 'CCTV'),
+    cctvCount: featureCounts.cctv ?? 0,
     safeSpotCount: score.tier2Count,
+    featureCounts,
     darkZoneCount: score.darkZoneCount,
     tier2Count: score.tier2Count,
     darkZones: score.darkZones,
@@ -312,16 +346,6 @@ function routeCandidateScore(route: RouteCandidate): RouteSafetyScore {
     distanceMeters: route.totalDistance,
     darkZones: route.darkZones ?? [],
   };
-}
-
-function countTier1NearRoute(polyline: LatLng[], elements: SafetyElement[], type: Tier1ElementType): number {
-  const counted = new Set<string>();
-  for (const element of elements) {
-    if (element.type !== type) continue;
-    const projection = nearestProjectionOnRoute(element.position, polyline);
-    if (projection.distanceToRoute <= TIER1_THRESHOLDS_M[type]) counted.add(element.id);
-  }
-  return counted.size;
 }
 
 export function collectSelectedRouteSafetyPoints(
