@@ -196,7 +196,7 @@ export default function App() {
       fetchChildSafeHouses()
       .then((items) => {
         setChildSafeHouses(items);
-        setChildSafeHouseError(items.length === 0 ? '\uAC15\uB989\uC2DC \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.' : null);
+        setChildSafeHouseError(null);
       })
       .catch(() => setChildSafeHouseError('\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'));
     }
@@ -1057,6 +1057,7 @@ export default function App() {
                   <RouteCard
                     type="safe"
                     route={safeRoute}
+                    fastRoute={fastRoute}
                     selectedFeatureIds={safetySettings.selectedFeatures}
                     active={activeRoute === 'safe'}
                     onClick={() => {

@@ -1,5 +1,21 @@
-import type { LatLng, Place, RouteCandidate, RouteNode, CctvPoint, SafeSpot, StreetlightPoint, SafetyFeatureId, SafetyPoint } from '../types';
-import { calcSafetyScore, calcSelectedSafetyScore, distanceMeters, findSafeWaypoints, findSelectedSafeWaypoints, hasBacktracking } from './safety';
+import type {
+  CctvPoint,
+  LatLng,
+  Place,
+  RouteCandidate,
+  RouteNode,
+  SafeSpot,
+  SafetyElement,
+  SafetyFeatureId,
+  SafetyPoint,
+  StreetlightPoint,
+} from '../types';
+import {
+  distanceMeters,
+  pickSafestRouteCandidate,
+  safetyPointsToElements,
+  scoreRouteCandidate,
+} from './safety';
 
 const TMAP_KEY = import.meta.env.VITE_TMAP_KEY as string;
 const TMAP_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1&format=json';
@@ -11,7 +27,7 @@ interface TmapFeature {
   properties: {
     totalDistance?: number;
     totalTime?: number;
-    streetName?: string; // Point 피처의 도로명 (큰길 판별용)
+    streetName?: string;
   };
 }
 
@@ -27,15 +43,12 @@ async function callTmapPedestrian(
     endY: String(destination.lat),
     reqCoordType: 'WGS84GEO',
     resCoordType: 'WGS84GEO',
-    startName: '출발지',
-    endName: '목적지',
-    searchOption: '0', // 최적 경로
+    startName: 'start',
+    endName: 'destination',
+    searchOption: '0',
   };
 
-  if (passList) {
-    // TMAP passList 형식: "경도,위도" (단일 경유지)
-    body.passList = `${passList.lng},${passList.lat}`;
-  }
+  if (passList) body.passList = `${passList.lng},${passList.lat}`;
 
   const res = await fetch(TMAP_URL, {
     method: 'POST',
@@ -49,24 +62,23 @@ async function callTmapPedestrian(
   const nodes: RouteNode[] = [];
   let totalDistance = 0;
   let totalTime = 0;
-  let currentMainRoad = false; // Point 피처 순서대로 이후 LineString에 적용
+  let currentMainRoad = false;
 
-  for (const f of data.features) {
-    if (f.geometry.type === 'Point') {
-      // T-map 방향 안내 피처에서 도로명 추출 → "로"/"대로" 포함 시 큰길 표시
-      const street = f.properties.streetName ?? '';
+  for (const feature of data.features) {
+    if (feature.geometry.type === 'Point') {
+      const street = feature.properties.streetName ?? '';
       currentMainRoad = street.length > 0 && (street.includes('대로') || street.includes('로'));
     }
-    if (f.geometry.type === 'LineString') {
-      for (const [lng, lat] of f.geometry.coordinates as number[][]) {
+    if (feature.geometry.type === 'LineString') {
+      for (const [lng, lat] of feature.geometry.coordinates as number[][]) {
         nodes.push({ lat, lng, mainRoad: currentMainRoad });
       }
     }
-    if (f.properties.totalDistance) totalDistance = f.properties.totalDistance;
-    if (f.properties.totalTime) totalTime = f.properties.totalTime;
+    if (feature.properties.totalDistance) totalDistance = feature.properties.totalDistance;
+    if (feature.properties.totalTime) totalTime = feature.properties.totalTime;
   }
 
-  if (nodes.length === 0) throw new Error('TMAP 경로 노드 없음');
+  if (nodes.length === 0) throw new Error('TMAP route nodes missing');
   return { nodes, totalDistance, totalTime };
 }
 
@@ -79,7 +91,7 @@ function fastRouteCacheKey(origin: LatLng, destination: LatLng): string {
   ].join(',');
 }
 
-function rawToFastRoute(raw: { nodes: RouteNode[]; totalDistance: number; totalTime: number }): RouteCandidate {
+function rawToRoute(raw: { nodes: RouteNode[]; totalDistance: number; totalTime: number }): RouteCandidate {
   return {
     nodes: raw.nodes,
     totalDistance: raw.totalDistance,
@@ -91,7 +103,6 @@ function rawToFastRoute(raw: { nodes: RouteNode[]; totalDistance: number; totalT
   };
 }
 
-// 두 경로가 실질적으로 동일한지 비교 (중간 + 1/4 지점 모두 40m 이내면 동일 경로)
 function routesAreSame(a: RouteNode[], b: RouteNode[]): boolean {
   if (a.length === 0 || b.length === 0) return true;
   const midA = a[Math.floor(a.length / 2)];
@@ -102,123 +113,68 @@ function routesAreSame(a: RouteNode[], b: RouteNode[]): boolean {
   return distanceMeters(q1A, q1B) < 40;
 }
 
-function nearestProgressOnRoute(point: RouteNode, route: RouteNode[]): { dist: number; progress: number } {
-  let bestDist = Infinity;
+function routeProgress(point: LatLng, nodes: RouteNode[]): number {
+  let bestDistance = Infinity;
   let bestIndex = 0;
-  for (let index = 0; index < route.length; index += 3) {
-    const dist = distanceMeters(point, route[index]);
-    if (dist < bestDist) {
-      bestDist = dist;
+  for (let index = 0; index < nodes.length; index += 4) {
+    const distance = distanceMeters(point, nodes[index]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
       bestIndex = index;
     }
   }
-  return {
-    dist: bestDist,
-    progress: route.length > 1 ? bestIndex / (route.length - 1) : 0,
-  };
+  return nodes.length > 1 ? bestIndex / (nodes.length - 1) : 0;
 }
 
-function hasSideSpurFromBaseline(baseline: RouteNode[], candidate: RouteNode[]): boolean {
-  if (baseline.length < 6 || candidate.length < 6) return false;
-
-  let inExcursion = false;
-  let startProgress = 0;
-  let maxDist = 0;
-
-  for (let index = 0; index < candidate.length; index += 2) {
-    const probe = nearestProgressOnRoute(candidate[index], baseline);
-
-    if (!inExcursion && probe.dist > 45) {
-      inExcursion = true;
-      startProgress = probe.progress;
-      maxDist = probe.dist;
-      continue;
-    }
-
-    if (!inExcursion) continue;
-    maxDist = Math.max(maxDist, probe.dist);
-
-    if (probe.dist <= 35) {
-      const progressDelta = Math.abs(probe.progress - startProgress);
-      if (maxDist >= 65 && progressDelta < 0.12) return true;
-      inExcursion = false;
-      maxDist = 0;
-    }
+function minDistanceToRoute(point: LatLng, nodes: RouteNode[]): number {
+  let min = Infinity;
+  for (let index = 0; index < nodes.length; index += 4) {
+    min = Math.min(min, distanceMeters(point, nodes[index]));
   }
-
-  return false;
+  return min;
 }
 
-function requiredSafetyGain(detourRatio: number): number {
-  if (detourRatio <= 1.05) return 1.08;
-  if (detourRatio <= 1.12) return 1.18;
-  if (detourRatio <= 1.18) return 1.32;
-  return 1.5;
+function buildCandidateWaypoints(baseline: RouteCandidate, elements: SafetyElement[]): LatLng[] {
+  const seenBuckets = new Set<string>();
+  return elements
+    .map((element) => ({
+      position: element.position,
+      progress: routeProgress(element.position, baseline.nodes),
+      distanceToRoute: minDistanceToRoute(element.position, baseline.nodes),
+    }))
+    .filter((candidate) => candidate.progress >= 0.08 && candidate.progress <= 0.92)
+    .filter((candidate) => candidate.distanceToRoute >= 25 && candidate.distanceToRoute <= 180)
+    .filter((candidate) => {
+      const bucket = `${Math.round(candidate.progress * 20)}:${Math.round(candidate.position.lat * 5000)}:${Math.round(candidate.position.lng * 5000)}`;
+      if (seenBuckets.has(bucket)) return false;
+      seenBuckets.add(bucket);
+      return true;
+    })
+    .sort((a, b) => a.progress - b.progress || a.distanceToRoute - b.distanceToRoute)
+    .slice(0, 8)
+    .map((candidate) => candidate.position);
 }
 
-export async function fetchPedestrianRoutes(
+async function buildSafeRouteCandidates(
   origin: LatLng,
   destination: LatLng,
-  cctvList: CctvPoint[],
-  safeSpots: SafeSpot[],
-  streetlights: StreetlightPoint[] = []
+  baseline: RouteCandidate,
+  elements: SafetyElement[]
 ): Promise<RouteCandidate[]> {
-  // 경로 A: 직선 최단 (빠른길 기반)
-  const rawA = await callTmapPedestrian(origin, destination);
-  const scoreA = calcSafetyScore(rawA.nodes, cctvList, safeSpots, streetlights);
+  const waypoints = buildCandidateWaypoints(baseline, elements);
+  const rawResults = await Promise.allSettled(
+    waypoints.map((waypoint) => callTmapPedestrian(origin, destination, waypoint))
+  );
+  const candidates = [baseline];
 
-  // 상위 2개 경유지 후보 탐색 후 병렬 요청 — 더 많은 안전 경로 탐색
-  const waypoints = findSafeWaypoints(rawA.nodes, cctvList, safeSpots, 2);
-
-  let rawB = rawA;
-  let scoreB = scoreA;
-
-  if (waypoints.length > 0) {
-    const waypointResults = await Promise.allSettled(
-      waypoints.map((wp) => callTmapPedestrian(origin, destination, wp))
-    );
-
-    for (const result of waypointResults) {
-      if (result.status !== 'fulfilled') continue;
-      const candidate = result.value;
-      const detourRatio =
-        rawA.totalDistance > 0 ? candidate.totalDistance / rawA.totalDistance : 1;
-      // 동일 경로이거나 우회 20% 초과 → 기각
-      if (routesAreSame(rawA.nodes, candidate.nodes) || detourRatio > 1.2) continue;
-      // 골목 진입 후 되돌아 나오는 U턴·대폭 우회 패턴 → 기각
-      if (hasBacktracking(candidate.nodes, 0.15)) continue;
-      if (hasSideSpurFromBaseline(rawA.nodes, candidate.nodes)) continue;
-
-      const scoreC = calcSafetyScore(candidate.nodes, cctvList, safeSpots, streetlights);
-      const minScore = scoreA.score > 0 ? scoreA.score * requiredSafetyGain(detourRatio) : scoreA.score + 0.8;
-      if (scoreC.score < minScore) continue;
-      // 현재 최선 안심길보다도 안전 점수 높아야 교체
-      if (scoreC.score > scoreB.score) {
-        rawB = candidate;
-        scoreB = scoreC;
-      }
-    }
+  for (const result of rawResults) {
+    if (result.status !== 'fulfilled') continue;
+    const candidate = rawToRoute(result.value);
+    if (routesAreSame(baseline.nodes, candidate.nodes)) continue;
+    candidates.push(candidate);
   }
 
-  const candidateA: RouteCandidate = {
-    nodes: rawA.nodes,
-    totalDistance: rawA.totalDistance,
-    totalTime: rawA.totalTime,
-    safetyScore: scoreA.score,
-    cctvCount: scoreA.cctvCount,
-    safeSpotCount: scoreA.safeSpotCount,
-  };
-
-  const candidateB: RouteCandidate = {
-    nodes: rawB.nodes,
-    totalDistance: rawB.totalDistance,
-    totalTime: rawB.totalTime,
-    safetyScore: scoreB.score,
-    cctvCount: scoreB.cctvCount,
-    safeSpotCount: scoreB.safeSpotCount,
-  };
-
-  return [candidateA, candidateB];
+  return candidates;
 }
 
 export async function fetchFastPedestrianRoute(
@@ -229,8 +185,7 @@ export async function fetchFastPedestrianRoute(
   const cached = fastRouteCache.get(cacheKey);
   if (cached) return cached;
 
-  const raw = await callTmapPedestrian(origin, destination);
-  const route = rawToFastRoute(raw);
+  const route = rawToRoute(await callTmapPedestrian(origin, destination));
   fastRouteCache.set(cacheKey, route);
   return route;
 }
@@ -242,66 +197,46 @@ export async function fetchSelectedPedestrianRoutes(
   selectedFeatures: SafetyFeatureId[],
   baselineRoute?: RouteCandidate
 ): Promise<RouteCandidate[]> {
-  const rawA = baselineRoute
-    ? {
-        nodes: baselineRoute.nodes,
-        totalDistance: baselineRoute.totalDistance,
-        totalTime: baselineRoute.totalTime,
-      }
-    : await callTmapPedestrian(origin, destination);
-  const scoreA = calcSelectedSafetyScore(rawA.nodes, safetyPoints, selectedFeatures);
-  const waypoints = findSelectedSafeWaypoints(rawA.nodes, safetyPoints, selectedFeatures, 2);
-
-  let rawB = rawA;
-  let scoreB = scoreA;
-
-  if (waypoints.length > 0) {
-    const waypointResults = await Promise.allSettled(
-      waypoints.map((wp) => callTmapPedestrian(origin, destination, wp))
-    );
-
-    for (const result of waypointResults) {
-      if (result.status !== 'fulfilled') continue;
-      const candidate = result.value;
-      const detourRatio = rawA.totalDistance > 0 ? candidate.totalDistance / rawA.totalDistance : 1;
-      if (routesAreSame(rawA.nodes, candidate.nodes) || detourRatio > 1.2) continue;
-      if (hasBacktracking(candidate.nodes, 0.15)) continue;
-      if (hasSideSpurFromBaseline(rawA.nodes, candidate.nodes)) continue;
-
-      const scoreC = calcSelectedSafetyScore(candidate.nodes, safetyPoints, selectedFeatures);
-      const minScore = scoreA.score > 0 ? scoreA.score * requiredSafetyGain(detourRatio) : scoreA.score + 0.8;
-      if (scoreC.score < minScore) continue;
-      if (scoreC.score > scoreB.score) {
-        rawB = candidate;
-        scoreB = scoreC;
-      }
-    }
-  }
-
-  const candidateA: RouteCandidate = {
-    nodes: rawA.nodes,
-    totalDistance: rawA.totalDistance,
-    totalTime: rawA.totalTime,
-    safetyScore: scoreA.score,
-    cctvCount: scoreA.cctvCount,
-    safeSpotCount: scoreA.safeSpotCount,
-    featureCounts: scoreA.featureCounts,
-  };
-
-  const candidateB: RouteCandidate = {
-    nodes: rawB.nodes,
-    totalDistance: rawB.totalDistance,
-    totalTime: rawB.totalTime,
-    safetyScore: scoreB.score,
-    cctvCount: scoreB.cctvCount,
-    safeSpotCount: scoreB.safeSpotCount,
-    featureCounts: scoreB.featureCounts,
-  };
-
-  return [candidateA, candidateB];
+  const baseline = baselineRoute ?? await fetchFastPedestrianRoute(origin, destination);
+  const elements = safetyPointsToElements(safetyPoints, selectedFeatures);
+  const candidates = await buildSafeRouteCandidates(origin, destination, baseline, elements);
+  const scoredCandidates = candidates.map((candidate) => scoreRouteCandidate(candidate, elements));
+  const safeRoute = pickSafestRouteCandidate(scoredCandidates, elements);
+  const fastRoute = scoreRouteCandidate(baseline, elements);
+  return [safeRoute, fastRoute];
 }
 
-// 강릉 바운딩박스 내 T-map POI 키워드 검색 (카카오 커버리지 보완용)
+export async function fetchPedestrianRoutes(
+  origin: LatLng,
+  destination: LatLng,
+  cctvList: CctvPoint[],
+  safeSpots: SafeSpot[],
+  streetlights: StreetlightPoint[] = []
+): Promise<RouteCandidate[]> {
+  const baseline = await fetchFastPedestrianRoute(origin, destination);
+  const elements: SafetyElement[] = [
+    ...cctvList.map((point, index) => ({
+      id: `cctv:${index}:${point.lat}:${point.lng}`,
+      type: 'CCTV' as const,
+      position: { lat: point.lat, lng: point.lng },
+    })),
+    ...streetlights.map((point, index) => ({
+      id: `streetlight:${index}:${point.lat}:${point.lng}`,
+      type: 'streetlight' as const,
+      position: { lat: point.lat, lng: point.lng },
+    })),
+    ...safeSpots.map((point, index) => ({
+      id: `spot:${index}:${point.lat}:${point.lng}`,
+      type: 'convenience_store' as const,
+      position: { lat: point.lat, lng: point.lng },
+    })),
+  ];
+  const candidates = await buildSafeRouteCandidates(origin, destination, baseline, elements);
+  const safeRoute = pickSafestRouteCandidate(candidates, elements);
+  const fastRoute = scoreRouteCandidate(baseline, elements);
+  return [safeRoute, fastRoute];
+}
+
 export async function searchTmapPOI(keyword: string): Promise<Place[]> {
   if (!TMAP_KEY || !keyword.trim()) return [];
   try {
@@ -323,19 +258,19 @@ export async function searchTmapPOI(keyword: string): Promise<Place[]> {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pois: any[] = data?.searchPoiInfo?.pois?.poi ?? [];
+    const pois: unknown[] = data?.searchPoiInfo?.pois?.poi ?? [];
     return pois
-      .filter((p) => p.noorLat && p.noorLon)
-      .map((p) => ({
-        name: p.name || p.poiname || '',
-        address: [p.upperAddrName, p.middleAddrName, p.lowerAddrName, p.detailAddrName]
+      .map((poi) => poi as Record<string, string | undefined>)
+      .filter((poi) => poi.noorLat && poi.noorLon)
+      .map((poi) => ({
+        name: poi.name || poi.poiname || '',
+        address: [poi.upperAddrName, poi.middleAddrName, poi.lowerAddrName, poi.detailAddrName]
           .filter(Boolean)
           .join(' ')
           .trim(),
-        position: { lat: parseFloat(p.noorLat), lng: parseFloat(p.noorLon) },
+        position: { lat: Number(poi.noorLat), lng: Number(poi.noorLon) },
       }))
-      .filter((p) => p.name && !isNaN(p.position.lat) && !isNaN(p.position.lng));
+      .filter((place) => place.name && Number.isFinite(place.position.lat) && Number.isFinite(place.position.lng));
   } catch {
     return [];
   }

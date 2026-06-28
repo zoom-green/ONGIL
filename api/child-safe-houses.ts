@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const SAFEDREAM_API_URL = 'https://www.safe182.go.kr/api/lcm/safeMap.do';
 const VWORLD_DATA_API_URL = 'https://api.vworld.kr/req/data';
+const KAKAO_KEYWORD_API_URL = 'https://dapi.kakao.com/v2/local/search/keyword.json';
 
 interface SafeDreamItem {
   lcSn?: number | string;
@@ -38,6 +39,16 @@ interface ChildSafeHouseApiItem {
   categoryName: string;
   phone?: string;
   source: string;
+}
+
+interface KakaoKeywordItem {
+  id?: string;
+  place_name?: string;
+  road_address_name?: string;
+  address_name?: string;
+  phone?: string;
+  x?: string;
+  y?: string;
 }
 
 function cleanPhone(phone: string | null | undefined): string | undefined {
@@ -80,6 +91,24 @@ function toVworldItem(feature: VworldFeature): ChildSafeHouseApiItem | null {
     categoryName: properties.cat_nam ?? '\uC544\uB3D9\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
     phone: cleanPhone(properties.fac_tel),
     source: '\uAD6D\uD1A0\uAD50\uD1B5\uBD80',
+  };
+}
+
+function toKakaoItem(item: KakaoKeywordItem): ChildSafeHouseApiItem | null {
+  const lat = Number(item.y);
+  const lng = Number(item.x);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const address = item.road_address_name || item.address_name || '';
+  if (!address.includes('\uAC15\uB989\uC2DC')) return null;
+  return {
+    id: String(item.id ?? `${lat},${lng}`),
+    name: item.place_name ?? '\uC544\uB3D9\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
+    lat,
+    lng,
+    address,
+    categoryName: '\uC544\uB3D9\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
+    phone: cleanPhone(item.phone),
+    source: 'Kakao',
   };
 }
 
@@ -151,6 +180,53 @@ function fetchJsonWithInsecureAgent<T>(url: string): Promise<T> {
   });
 }
 
+function fetchKakaoKeywordItems(restKey: string): Promise<ChildSafeHouseApiItem[]> {
+  const queries = [
+    '\uAC15\uB989 \uC544\uB3D9\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
+    '\uAC15\uB989\uC2DC \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
+  ];
+  const requests = queries.map((query) => new Promise<ChildSafeHouseApiItem[]>((resolve, reject) => {
+    const params = new URLSearchParams({
+      query,
+      rect: '128.70,37.55,129.10,37.95',
+      size: '15',
+      page: '1',
+    });
+    const request = https.get(
+      `${KAKAO_KEYWORD_API_URL}?${params}`,
+      {
+        headers: {
+          Authorization: `KakaoAK ${restKey}`,
+          'User-Agent': 'Mozilla/5.0',
+        },
+      },
+      (upstream) => {
+        let body = '';
+        upstream.on('data', (chunk) => { body += chunk; });
+        upstream.on('end', () => {
+          if ((upstream.statusCode ?? 500) >= 400) {
+            reject(new Error(`Kakao request failed: ${upstream.statusCode}`));
+            return;
+          }
+          try {
+            const data = JSON.parse(body) as { documents?: KakaoKeywordItem[] };
+            resolve((data.documents ?? []).map(toKakaoItem).filter((item): item is ChildSafeHouseApiItem => Boolean(item)));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+    );
+    request.setTimeout(5000, () => {
+      request.destroy(new Error('Kakao request timeout'));
+    });
+    request.on('error', reject);
+  }));
+  return Promise.allSettled(requests).then((results) => mergeItems(results.flatMap((result) => (
+    result.status === 'fulfilled' ? result.value : []
+  ))));
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -160,6 +236,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const esntlId = process.env.SAFEDREAM_ESNTL_ID;
   const authKey = process.env.SAFEDREAM_AUTH_KEY;
   const vworldKey = process.env.VWORLD_API_KEY;
+  const kakaoRestKey = process.env.KAKAO_REST_KEY ?? process.env.VITE_KAKAO_REST_KEY;
   const protocol = String(req.headers['x-forwarded-proto'] ?? 'https').split(',')[0];
   const host = req.headers.host;
   const vworldDomain = process.env.VWORLD_API_DOMAIN ?? (host ? `${protocol}://${host}` : 'http://localhost');
@@ -221,7 +298,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const vworldItems = (vworldOk ? vworldData.response?.result?.featureCollection?.features ?? [] : [])
       .map(toVworldItem)
       .filter((item): item is ChildSafeHouseApiItem => Boolean(item));
-    const items = mergeItems([...safeDreamItems, ...vworldItems]);
+    const kakaoItems = safeDreamItems.length + vworldItems.length === 0 && kakaoRestKey
+      ? await fetchKakaoKeywordItems(kakaoRestKey)
+      : [];
+    const items = mergeItems([...safeDreamItems, ...vworldItems, ...kakaoItems]);
 
     res.status(200).json({
       source: '\uC548\uC804Dream \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 API + \uAD6D\uD1A0\uAD50\uD1B5\uBD80 VWorld 2D Data API',
@@ -229,6 +309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       counts: {
         safeDream: safeDreamItems.length,
         molit: vworldItems.length,
+        kakao: kakaoItems.length,
         merged: items.length,
       },
       warnings: {

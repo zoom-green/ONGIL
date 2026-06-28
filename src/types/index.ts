@@ -3,6 +3,39 @@ export interface LatLng {
   lng: number;
 }
 
+export type Tier1ElementType = 'CCTV' | 'streetlight';
+
+export type Tier2ElementType =
+  | 'convenience_store'
+  | 'cafe_restaurant'
+  | 'police'
+  | 'fire_station'
+  | 'safety_guardian_house'
+  | 'emergency_bell'
+  | 'emergency_medical';
+
+export type SafetyElementType = Tier1ElementType | Tier2ElementType;
+
+export interface SafetyElement {
+  id: string;
+  type: SafetyElementType;
+  position: LatLng;
+}
+
+export interface DarkZone {
+  from: LatLng;
+  to: LatLng;
+  distanceMeters: number;
+  elementType: Tier1ElementType;
+}
+
+export interface RouteSafetyScore {
+  darkZoneCount: number;
+  tier2Count: number;
+  distanceMeters: number;
+  darkZones: DarkZone[];
+}
+
 export interface MapBounds {
   sw: LatLng;
   ne: LatLng;
@@ -113,6 +146,9 @@ export interface RouteCandidate {
   cctvCount: number;
   safeSpotCount: number;
   featureCounts?: Partial<Record<SafetyFeatureId, number>>;
+  darkZoneCount?: number;
+  tier2Count?: number;
+  darkZones?: DarkZone[];
 }
 
 export interface RouteResult {
