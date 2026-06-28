@@ -86,7 +86,7 @@ export default function App() {
 
   const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
   const [manualOrigin, setManualOrigin] = useState<Place | null>(null);
-  // 寃쎈줈 怨꾩궛 ???뺤젙??異쒕컻吏 ??GPS ?깅쭏??蹂?섎뒗 effectiveOrigin ???KakaoMap???꾨떖
+  // 寃쎈줈 怨꾩궛 ???뺤젙??출발吏 ??GPS ?깅쭏??蹂?섎뒗 effectiveOrigin ???KakaoMap???꾨떖
   const [lockedOrigin, setLockedOrigin] = useState<LatLng | null>(null);
 
   const effectiveOrigin: LatLng | null = manualOrigin?.position ?? gpsOrigin;
@@ -529,20 +529,20 @@ export default function App() {
 
     const dist = minDistToRoute(userLocation, activeNodes);
     const statusText = dist > 50
-      ? `寃쎈줈瑜?踰쀬뼱?ъ뒿?덈떎. 寃쎈줈?먯꽌 ??${Math.round(dist)}m ?⑥뼱???덉뒿?덈떎.`
-      : '寃쎈줈瑜??곕씪 ?대룞 以묒엯?덈떎.';
+      ? `경로를 벗어났습니다. 경로에서 약 ${Math.round(dist)}m 떨어졌습니다.`
+      : '경로를 따라 이동 중입니다.';
     const mapsLink = `https://maps.google.com/?q=${userLocation.lat.toFixed(5)},${userLocation.lng.toFixed(5)}`;
     const routeName = activeRoute === 'safe' ? '안심길' : '빠른길';
-    const message = `[ON:湲??꾩튂怨듭쑀]\n${routeName} ?대룞 以?n${destination ? `紐⑹쟻吏: ${destination.name}\n` : ''}?곹깭: ${statusText}\n?꾩옱 ?꾩튂: ${mapsLink}`;
+    const message = `[ON:길 위치공유]\n${routeName} 이동 중\n${destination ? `목적지: ${destination.name}\n` : ""}상태: ${statusText}\n현재 위치: ${mapsLink}`;
     lastSharePromptRef.current = now;
     setSharePrompt({ message, createdAt: now });
   }, [walkStarted, userLocation, activeNodes, guardianPhones, safetySettings.shareIntervalMinutes, activeRoute, destination]);
 
-  // SDK ?ㅻ쪟 ?붾㈃
+  // SDK 오류 화면
   if (kakaoError) {
     return (
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', boxSizing: 'border-box' }}>
-        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F', marginBottom: '16px' }}>ON:???④만</div>
+        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F', marginBottom: '16px' }}>ON:吉 온길</div>
         <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '16px', padding: '20px 24px', maxWidth: '360px', width: '100%' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, color: '#DC2626', marginBottom: '12px' }}>吏??SDK 珥덇린???ㅽ뙣</div>
           <pre style={{ fontSize: '13px', color: '#374151', whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.7 }}>{kakaoError}</pre>
@@ -551,11 +551,11 @@ export default function App() {
     );
   }
 
-  // SDK 濡쒕뵫 以??붾㈃
+  // SDK 로딩 중 화면
   if (!kakaoReady) {
     return (
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC' }}>
-        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F' }}>ON:???④만</div>
+        <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F' }}>ON:吉 온길</div>
         <div style={{ width: '36px', height: '36px', border: '3px solid #E5E7EB', borderTop: '3px solid #3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         <div style={{ fontSize: '13px', color: '#94A3B8' }}>吏??遺덈윭?ㅻ뒗 以?..</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -566,14 +566,14 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', position: 'relative', overflow: 'hidden' }}>
 
-      {/* ?ㅻ뜑 */}
+      {/* 헤더 */}
       <div style={{ background: '#fff', padding: '14px 16px 10px', borderBottom: '1px solid #F1F5F9', zIndex: 10, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
           {step === 'routes' && (
             <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', padding: '0', color: '#374151' }}>{'<'}</button>
           )}
           <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>ON:???④만</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>ON:吉 온길</div>
             <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '1px' }}>강릉 야간 안심 이동 서비스</div>
           </div>
           <button
@@ -595,17 +595,17 @@ export default function App() {
         </div>
 
         {!locationReady ? (
-          <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>?꾩튂 ?뺤씤 以?..</div>
+          <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>위치 확인 중...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {/* 異쒕컻吏 ??*/}
+            {/* 출발吏 ??*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>異쒕컻</span>
+              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>출발</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`origin-${step}-${Boolean(manualOrigin)}`}
                   onSelect={handleOriginSelect}
-                  placeholder={manualOrigin ? manualOrigin.name : '?꾩옱 ?꾩튂 (GPS)'}
+                  placeholder={manualOrigin ? manualOrigin.name : '현재 위치 (GPS)'}
                   defaultValue={manualOrigin?.name ?? ''}
                   userPosition={gpsOrigin}
                 />
@@ -622,7 +622,7 @@ export default function App() {
             </div>
             {/* 紐⑹쟻吏 ??*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>?꾩갑</span>
+              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>도착</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`dest-${step}`}
@@ -731,7 +731,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 吏???대┃ ??異쒕컻吏/?꾩갑吏 ?ㅼ젙 諛뷀??쒗듃 */}
+        {/* 吏???대┃ ??출발吏/도착吏 ?ㅼ젙 諛뷀??쒗듃 */}
         {sharePrompt && (
           <div style={{
             position: 'absolute',
@@ -747,7 +747,7 @@ export default function App() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: '#047857' }}>蹂댄샇???꾩튂 怨듭쑀 ?쒓컙???섏뿀?댁슂</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: '#047857' }}>보호자에게 위치 공유 시간이 됐습니다</div>
                 <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
                   {routeStatus === 'offRoute' ? '寃쎈줈 ?댄깉 ?곹깭媛 ?④퍡 ?꾨떖?쇱슂.' : '寃쎈줈 ?곕씪 ?대룞 以??곹깭媛 ?④퍡 ?꾨떖?쇱슂.'}
                 </div>
@@ -756,7 +756,7 @@ export default function App() {
                 onClick={handleShareLocation}
                 style={{ border: 0, background: '#059669', color: '#fff', borderRadius: 10, padding: '9px 11px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
               >
-                臾몄옄 ?닿린
+                문자 보내기
               </button>
               <button
                 onClick={() => setSharePrompt(null)}
@@ -802,7 +802,7 @@ export default function App() {
                 }}
               >
                 <WhitePinIcon accent="#3D63F1" />
-                異쒕컻吏濡??ㅼ젙
+                출발吏濡??ㅼ젙
               </button>
               <button
                 onClick={handleSetDestFromMap}
@@ -818,7 +818,7 @@ export default function App() {
                 }}
               >
                 <WhitePinIcon accent="#D64F77" />
-                ?꾩갑吏濡??ㅼ젙
+                도착吏濡??ㅼ젙
               </button>
             </div>
           </div>
