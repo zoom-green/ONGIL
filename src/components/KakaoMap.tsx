@@ -92,6 +92,7 @@ interface Props {
   userLocation?: UserLocation | null;
   childSafeHouses?: ChildSafeHousePoint[];
   safetyPoints?: SafetyPoint[];
+  routeEvidencePoints?: SafetyPoint[];
   safemapWmsLayers?: string[];
   crimeWmsKey?: string;
   showCrimeOverlay?: boolean;
@@ -113,6 +114,7 @@ export default function KakaoMap({
   userLocation,
   childSafeHouses,
   safetyPoints = [],
+  routeEvidencePoints = [],
   safemapWmsLayers = [],
   crimeWmsKey,
   showCrimeOverlay,
@@ -136,6 +138,7 @@ export default function KakaoMap({
   const lastFitRouteKeyRef = useRef('');
   // ref so the zoom_changed closure always reads the latest prop value
   const showOverlaysRef = useRef(showOverlays);
+  const hasRouteEvidenceRef = useRef(routeEvidencePoints.length > 0);
   // ref so click closure always reads latest callback without re-registering the listener
   const onMapClickRef = useRef(onMapClick);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
@@ -160,12 +163,13 @@ export default function KakaoMap({
   // keep ref in sync and re-apply icon visibility when toggle changes
   useEffect(() => {
     showOverlaysRef.current = showOverlays;
+    hasRouteEvidenceRef.current = routeEvidencePoints.length > 0;
     const map = mapRef.current;
     if (!map) return;
     const level = map.getLevel();
-    const visible = showOverlays && level <= ICON_ZOOM_THRESHOLD;
+    const visible = (showOverlays || routeEvidencePoints.length > 0) && level <= ICON_ZOOM_THRESHOLD;
     iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
-  }, [showOverlays]);
+  }, [showOverlays, routeEvidencePoints.length]);
 
   // map initialisation + zoom listener (runs once)
   useEffect(() => {
@@ -207,7 +211,7 @@ export default function KakaoMap({
     // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'zoom_changed', () => {
       const level = map.getLevel();
-      const visible = showOverlaysRef.current && level <= ICON_ZOOM_THRESHOLD;
+      const visible = (showOverlaysRef.current || hasRouteEvidenceRef.current) && level <= ICON_ZOOM_THRESHOLD;
       iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
     });
     // @ts-expect-error kakao types incomplete
@@ -536,8 +540,9 @@ export default function KakaoMap({
       add(line);
     }
 
-    // CCTV / safespot icons — visible only when zoomed in (zoom_changed listener controls this)
-    if (showOverlays) {
+    // Safety icons are visible only when zoomed in. Route evidence points are
+    // independent from manual toggles, so the safe-route explanation stays visible.
+    if (showOverlays || routeEvidencePoints.length > 0) {
       const iconsVisible = map.getLevel() <= ICON_ZOOM_THRESHOLD;
 
       const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (ch) => ({
@@ -549,7 +554,9 @@ export default function KakaoMap({
       }[ch] ?? ch));
 
       const makeSafetyMarkerContent = (feature: ReturnType<typeof getSafetyFeature>, title: string, size = 30, label?: string) => {
-        const imageHtml = safetyIconSvg(feature.id, Math.round(size * 0.66));
+        const imageHtml = feature.iconFile
+          ? `<img src="/icons/${feature.iconFile}" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;object-fit:cover"/>`
+          : safetyIconSvg(feature.id, Math.round(size * 0.72));
         const iconHtml = (
           `<div title="${title}" style="width:${size}px;height:${size}px;position:relative;border-radius:7px;background:${feature.color};border:3px solid #fff;box-shadow:none;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:default">` +
           `<div style="display:flex;align-items:center;justify-content:center">${imageHtml}</div>` +
@@ -563,8 +570,13 @@ export default function KakaoMap({
           '</div>'
         );
       };
+      const visibleSafetyPoints = new Map<string, SafetyPoint>();
+      if (showOverlays) {
+        for (const point of safetyPoints) visibleSafetyPoints.set(point.id, point);
+      }
+      for (const point of routeEvidencePoints) visibleSafetyPoints.set(point.id, point);
 
-      for (const point of safetyPoints) {
+      for (const point of visibleSafetyPoints.values()) {
         const feature = getSafetyFeature(point.featureId);
         const title = escapeHtml(point.name || feature.label);
         const label = point.featureId === 'childSafeHouse' && point.displayLabel ? escapeHtml(point.displayLabel) : undefined;
@@ -606,7 +618,7 @@ export default function KakaoMap({
             ? 'convenience'
           : cat.includes('카페')
             ? 'food'
-          : cat.includes('약국')
+          : cat.includes('병원')
             ? 'medical'
             : 'food';
         const feature = getSafetyFeature(featureId);
@@ -735,7 +747,7 @@ export default function KakaoMap({
       markerBatchTimersRef.current = [];
     };
 
-  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses, safetyPoints]);
+  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses, safetyPoints, routeEvidencePoints]);
 
   return (
     <div

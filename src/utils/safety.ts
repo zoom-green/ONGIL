@@ -194,6 +194,42 @@ export function calcSelectedSafetyScore(
   };
 }
 
+export function collectSelectedRouteSafetyPoints(
+  nodes: RouteNode[],
+  points: SafetyPoint[],
+  selectedFeatures: SafetyFeatureId[]
+): SafetyPoint[] {
+  const selected = new Set(selectedFeatures);
+  const night = isNight();
+  const sampled = nodes.filter((_, i) => i % 3 === 0);
+  const seen = new Set<string>();
+
+  for (const node of sampled) {
+    const bestByFeature = new Map<SafetyFeatureId, { point: SafetyPoint; score: number }>();
+
+    for (const point of points) {
+      if (!selected.has(point.featureId)) continue;
+      if (!isSafetyPointAvailable(point)) continue;
+      const radius = safetyRadiusMeters(point.featureId);
+      const dist = distanceMeters(node, point);
+      if (dist > radius) continue;
+
+      const config = getSafetyFeature(point.featureId);
+      const baseWeight = night ? (point.nightWeight ?? config.nightWeight) : (point.weight ?? config.weight);
+      const closeness = 1 - Math.min(dist / radius, 1) * 0.45;
+      const score = baseWeight * closeness;
+      const current = bestByFeature.get(point.featureId);
+      if (!current || score > current.score) bestByFeature.set(point.featureId, { point, score });
+    }
+
+    for (const item of bestByFeature.values()) {
+      seen.add(item.point.id);
+    }
+  }
+
+  return points.filter((point) => seen.has(point.id));
+}
+
 export function pickBestRoute(candidates: RouteCandidate[]): {
   safeRoute: RouteCandidate;
   fastRoute: RouteCandidate;

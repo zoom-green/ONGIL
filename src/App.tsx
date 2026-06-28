@@ -13,7 +13,7 @@ import { loadCctvData } from './utils/cctv';
 import { loadStreetlightData } from './utils/streetlight';
 import { fetchSafeSpots, fetchSafeSpotsInBounds } from './utils/kakaoLocal';
 import { fetchChildSafeHouses } from './utils/childSafeHouses';
-import { pickBestRoute, distanceMeters, minDistToRoute, isSafetyPointAvailable } from './utils/safety';
+import { pickBestRoute, distanceMeters, minDistToRoute, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
 import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
 import { useShakeDetection } from './hooks/useShakeDetection';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
@@ -86,7 +86,7 @@ export default function App() {
 
   const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
   const [manualOrigin, setManualOrigin] = useState<Place | null>(null);
-  // 寃쎈줈 怨꾩궛 ???뺤젙??출발吏 ??GPS ?깅쭏??蹂?섎뒗 effectiveOrigin ???KakaoMap???꾨떖
+  // 寃쎈줈 怨꾩궛 ??뺤젙?출발吏 ?GPS ?깅쭏?蹂?섎뒗 effectiveOrigin ??KakaoMap??꾨떖
   const [lockedOrigin, setLockedOrigin] = useState<LatLng | null>(null);
 
   const effectiveOrigin: LatLng | null = manualOrigin?.position ?? gpsOrigin;
@@ -113,7 +113,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [mapClickInfo, setMapClickInfo] = useState<{ lat: number; lng: number; address: string } | null>(null);
 
-  // ?ㅼ떆媛?GPS 異붿쟻 ????watchPosition 湲곕컲, heading ?ы븿
+  // ?ㅼ떆媛?GPS 異붿쟻 ??watchPosition 湲곕컲, heading ?ы븿
   const { location: userLocation, ready: locationReady } = useUserLocation();
   const [companionDisplay, setCompanionDisplay] = useState<CompanionDisplayMode | 'hidden'>('hidden');
   const [selectedPersona, setSelectedPersona] = useState<Persona>('mom');
@@ -160,23 +160,23 @@ export default function App() {
     return () => { stopped = true; clearInterval(timer); };
   }, []);
 
-  // userLocation ??gpsOrigin ?숆린??(泥?GPS ?뺤젙 ??吏??以묒떖???대룞)
+  // userLocation ?gpsOrigin ?숆린?(泥?GPS ?뺤젙 ?吏?以묒떖??대룞)
   useEffect(() => {
     if (userLocation) {
       const loc: LatLng = { lat: userLocation.lat, lng: userLocation.lng };
       setGpsOrigin(loc);
       if (walkStarted) setUserPos(loc);
-      // 吏??以묒떖???꾩쭅 媛뺣쫱 湲곕낯媛믪씠硫?泥?GPS 醫뚰몴濡??ㅻ깄
+      // 吏?以묒떖??꾩쭅 媛뺣쫱 湲곕낯媛믪씠硫?泥?GPS 醫뚰몴濡?ㅻ깄
       setUserPos((prev) =>
         prev.lat === GANGNEUNG_CENTER.lat && prev.lng === GANGNEUNG_CENTER.lng ? loc : prev
       );
     } else if (locationReady && !userLocation) {
-      // GPS 沅뚰븳 嫄곕? ???ㅽ뙣 ??媛뺣쫱 ?쇳꽣 ?대갚
+      // GPS 沅뚰븳 嫄곕? ??ㅽ뙣 ?媛뺣쫱 ?쇳꽣 ?대갚
       setGpsOrigin(GANGNEUNG_CENTER);
     }
   }, [userLocation, locationReady, walkStarted]);
 
-  // CCTV + 媛濡쒕벑 ?곗씠??濡쒕뱶
+  // CCTV + 媛濡쒕벑 ?곗씠?濡쒕뱶
   useEffect(() => {
     const routeNeeds = (id: SafetyFeatureId) => safetySettings.safeRouteEnabled && safetySettings.selectedFeatures.includes(id);
     if ((visibleFeatures.cctv || routeNeeds('cctv')) && cctvList === GANGNEUNG_CCTV_FALLBACK) loadCctvData().then(setCctvList);
@@ -191,7 +191,7 @@ export default function App() {
       .catch(() => setChildSafeHouseError('\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'));
   }, [visibleFeatures, safetySettings.safeRouteEnabled, safetySettings.selectedFeatures, cctvList, streetlightData.length, gyodongFoodPoints.length, lifeSafetyPoints.length, childSafeHouses.length]);
 
-  // SOS ?몃━嫄??⑥닔
+  // SOS ?몃━嫄?⑥닔
   const triggerSOSByButton = useCallback(() => {
     setEmergencyTrigger('sos');
     setEmergencyActive(true);
@@ -202,10 +202,10 @@ export default function App() {
     setEmergencyActive(true);
   }, []);
 
-  // ?몃뱶???멸쾶 2踰??붾뱾湲?媛먯? ??SOS
+  // ?몃뱶??멸쾶 2踰?붾뱾湲?媛먯? ?SOS
   useShakeDetection(triggerSOSByShake, true);
 
-  // ?숉뻾 以?500m留덈떎 蹂댄샇??SMS
+  // ?숉뻾 以?500m留덈떎 蹂댄샇?SMS
   useEffect(() => {
     if (!companionActive || !gpsOrigin) return;
     const valid = guardianPhones.filter(p => p.trim());
@@ -340,7 +340,7 @@ export default function App() {
         lastSharePromptRef.current = 0;
       } catch (e) {
         console.error(e);
-        setError('寃쎈줈瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲?? API ???먮뒗 ?ㅽ듃?뚰겕瑜??뺤씤?댁＜?몄슂.');
+        setError('경로를 불러오지 못했습니다. API 키 또는 네트워크를 확인해 주세요.');
       } finally {
         setLoading(false);
       }
@@ -410,6 +410,25 @@ export default function App() {
     () => Object.values(visibleFeatures).some(Boolean),
     [visibleFeatures]
   );
+
+  const routeCandidateSafetyPoints = useMemo(() => mergeSafetyPoints([
+    ...cctvToSafetyPoints(cctvList),
+    ...streetlightsToSafetyPoints(streetlightData),
+    ...kakaoSafeSpotsToSafetyPoints(safeSpots),
+    ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
+    ...gyodongFoodPoints,
+    ...lifeSafetyPoints,
+    ...childSafeHousePoints,
+  ]), [cctvList, streetlightData, safeSpots, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints]);
+
+  const routeEvidenceSafetyPoints = useMemo((): SafetyPoint[] => {
+    if (activeRoute !== 'safe' || !safeRoute || !safetySettings.selectedFeatures.length) return EMPTY_SAFETY_POINTS;
+    return collectSelectedRouteSafetyPoints(
+      safeRoute.nodes,
+      routeCandidateSafetyPoints,
+      safetySettings.selectedFeatures
+    );
+  }, [activeRoute, safeRoute, routeCandidateSafetyPoints, safetySettings.selectedFeatures]);
 
   const displaySafetyPoints = useMemo((): SafetyPoint[] => {
     if (!showOverlays || !hasVisibleFeature) return EMPTY_SAFETY_POINTS;
@@ -544,7 +563,7 @@ export default function App() {
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', boxSizing: 'border-box' }}>
         <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F', marginBottom: '16px' }}>ON:吉 온길</div>
         <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '16px', padding: '20px 24px', maxWidth: '360px', width: '100%' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#DC2626', marginBottom: '12px' }}>吏??SDK 珥덇린???ㅽ뙣</div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#DC2626', marginBottom: '12px' }}>지도 SDK 초기화 실패</div>
           <pre style={{ fontSize: '13px', color: '#374151', whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.7 }}>{kakaoError}</pre>
         </div>
       </div>
@@ -557,7 +576,7 @@ export default function App() {
       <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC' }}>
         <div style={{ fontSize: '20px', fontWeight: 800, color: '#1E3A5F' }}>ON:吉 온길</div>
         <div style={{ width: '36px', height: '36px', border: '3px solid #E5E7EB', borderTop: '3px solid #3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <div style={{ fontSize: '13px', color: '#94A3B8' }}>吏??遺덈윭?ㅻ뒗 以?..</div>
+        <div style={{ fontSize: '13px', color: '#94A3B8' }}>지도를 불러오는 중...</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -598,7 +617,7 @@ export default function App() {
           <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>위치 확인 중...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {/* 출발吏 ??*/}
+            {/* 출발吏 ?*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>출발</span>
               <div style={{ flex: 1 }}>
@@ -620,7 +639,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            {/* 紐⑹쟻吏 ??*/}
+            {/* 紐⑹쟻吏 ?*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>도착</span>
               <div style={{ flex: 1 }}>
@@ -668,7 +687,7 @@ export default function App() {
         )}
       </div>
 
-      {/* 湲닿툒?좉퀬 ?붾㈃ (理쒖슦???ㅻ쾭?덉씠) */}
+      {/* 湲닿툒?좉퀬 ?붾㈃ (理쒖슦??ㅻ쾭?덉씠) */}
       {emergencyActive && (
         <EmergencyScreen
           guardianPhones={guardianPhones}
@@ -688,7 +707,7 @@ export default function App() {
         />
       )}
 
-      {/* 吏???곸뿭 */}
+      {/* 吏??곸뿭 */}
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         <KakaoMap
           center={userPos}
@@ -702,6 +721,7 @@ export default function App() {
           streetlights={[]}
           childSafeHouses={[]}
           safetyPoints={displaySafetyPoints}
+          routeEvidencePoints={routeEvidenceSafetyPoints}
           safemapWmsLayers={EMPTY_WMS_LAYERS}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
@@ -731,7 +751,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 吏???대┃ ??출발吏/도착吏 ?ㅼ젙 諛뷀??쒗듃 */}
+        {/* 吏??대┃ ?출발吏/도착吏 ?ㅼ젙 諛뷀?쒗듃 */}
         {sharePrompt && (
           <div style={{
             position: 'absolute',
@@ -749,7 +769,7 @@ export default function App() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 900, color: '#047857' }}>보호자에게 위치 공유 시간이 됐습니다</div>
                 <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
-                  {routeStatus === 'offRoute' ? '寃쎈줈 ?댄깉 ?곹깭媛 ?④퍡 ?꾨떖?쇱슂.' : '寃쎈줈 ?곕씪 ?대룞 以??곹깭媛 ?④퍡 ?꾨떖?쇱슂.'}
+                  {routeStatus === 'offRoute' ? '경로 이탈 상태가 함께 전달돼요.' : '경로를 따라 이동 중인 상태가 함께 전달돼요.'}
                 </div>
               </div>
               <button
@@ -762,7 +782,7 @@ export default function App() {
                 onClick={() => setSharePrompt(null)}
                 style={{ border: 0, background: '#D1FAE5', color: '#047857', borderRadius: 10, width: 32, height: 32, fontSize: 18, cursor: 'pointer' }}
               >
-                횞
+                ×
               </button>
             </div>
           </div>
@@ -778,14 +798,14 @@ export default function App() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
               <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', marginBottom: '3px' }}>?좏깮???꾩튂</div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', marginBottom: '3px' }}>선택한 위치</div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1.4 }}>{mapClickInfo.address}</div>
               </div>
               <button
                 onClick={() => setMapClickInfo(null)}
                 style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9CA3AF', padding: '2px 4px', lineHeight: 1 }}
               >
-                ??              </button>
+                             </button>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
@@ -802,7 +822,7 @@ export default function App() {
                 }}
               >
                 <WhitePinIcon accent="#3D63F1" />
-                출발吏濡??ㅼ젙
+                출발지로 설정
               </button>
               <button
                 onClick={handleSetDestFromMap}
@@ -818,13 +838,13 @@ export default function App() {
                 }}
               >
                 <WhitePinIcon accent="#D64F77" />
-                도착吏濡??ㅼ젙
+                도착지로 설정
               </button>
             </div>
           </div>
         )}
 
-        {/* SOS 踰꾪듉 (吏??醫뚰븯?? */}
+        {/* SOS 踰꾪듉 (吏?醫뚰븯*/}
         <div style={{
           position: 'absolute', bottom: '20px', left: '16px', zIndex: 25,
         }}>
@@ -852,7 +872,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* AI ?숉뻾 ?쒖옉 踰꾪듉 (吏???고븯?? */}
+        {/* AI ?숉뻾 ?쒖옉 踰꾪듉 (吏??고븯*/}
         {!loading && !companionActive && (
           <button
             onClick={() => setShowPersonaModal(true)}
@@ -890,10 +910,11 @@ export default function App() {
               }}
             >
               <p style={{ textAlign: 'center', fontWeight: 700, fontSize: '16px', margin: '0 0 8px' }}>
-                ?꾧뎄? ?듯솕?좉퉴??
+                누구와 통화할까요?
               </p>
               <p style={{ textAlign: 'center', fontSize: '12px', color: '#9CA3AF', margin: '0 0 24px' }}>
-                ?좏깮???섎Ⅴ?뚮굹? ?쒓뎅?대줈 ?먯쑀濡?쾶 ??뷀빐??              </p>
+                선택한 페르소나와 한국어로 자연스럽게 대화해요.
+              </p>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                 {(['mom', 'dad', 'brother'] as Persona[]).map(p => {
                   const selected = selectedPersona === p;
@@ -933,7 +954,7 @@ export default function App() {
                   fontSize: '15px', fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                {PERSONA_LABELS[selectedPersona]}? ?듯솕?섍린
+                {PERSONA_LABELS[selectedPersona]}와 통화하기
               </button>
             </div>
           </div>
@@ -942,12 +963,12 @@ export default function App() {
         {loading && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', zIndex: 12 }}>
             <div style={{ width: '36px', height: '36px', border: '3px solid #E5E7EB', borderTop: '3px solid #3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            <div style={{ fontSize: '14px', color: '#374151', fontWeight: 600 }}>?덉쟾 寃쎈줈 遺꾩꽍 以?..</div>
+            <div style={{ fontSize: '14px', color: '#374151', fontWeight: 600 }}>안전 경로 분석 중...</div>
           </div>
         )}
       </div>
 
-      {/* AI ?뚯꽦 ???*/}
+      {/* AI ?뚯꽦 ??*/}
       {companionDisplay !== 'hidden' && (
         <CompanionCall
           key={companionKey}
@@ -958,15 +979,15 @@ export default function App() {
         />
       )}
 
-      {/* 寃쎈줈 移대뱶 ?⑤꼸 ???숉뻾 以묒뿉???④? */}
+      {/* 寃쎈줈 移대뱶 ?⑤꼸 ??숉뻾 以묒뿉??④? */}
       {step === 'routes' && !loading && companionDisplay === 'hidden' && (
         <div style={{ background: '#fff', padding: '16px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
           {error ? (
-            <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>?좑툘 {error}</div>
+            <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>{error}</div>
           ) : (safeRoute || fastRoute) ? (
             <>
               <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '10px', fontWeight: 500 }}>
-                ?뱧 {destination?.name}源뚯???寃쎈줈
+                {destination?.name}까지의 경로
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 {safeRoute && (
@@ -1014,7 +1035,7 @@ export default function App() {
                 </button>
                 {walkStarted && (
                   <div style={{ minWidth: 112, textAlign: 'center', fontSize: '12px', fontWeight: 900, color: routeStatus === 'offRoute' ? '#DC2626' : '#059669' }}>
-                    {routeStatus === 'offRoute' ? '寃쎈줈 ?댄깉' : '寃쎈줈 ?곕씪 ?대룞'}
+                    {routeStatus === 'offRoute' ? '경로 이탈' : '경로 따라 이동'}
                   </div>
                 )}
               </div>
@@ -1080,6 +1101,40 @@ function SafetyFeatureIcon({ id, size = 20 }: { id: SafetyFeatureId; size?: numb
 }
 
 function SafetyMarkerBadge({ feature, active, size = 36 }: { feature: SafetyFeatureConfig; active: boolean; size?: number }) {
+  if (feature.iconFile) {
+    return (
+      <span
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          background: active ? feature.color : '#D1D5DB',
+          border: '3px solid #fff',
+          boxShadow: 'none',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <img
+          src={`/icons/${feature.iconFile}`}
+          width={size}
+          height={size}
+          style={{
+            display: 'block',
+            width: size,
+            height: size,
+            objectFit: 'cover',
+            filter: active ? 'none' : 'grayscale(1)',
+            opacity: active ? 1 : 0.45,
+          }}
+          alt=""
+        />
+      </span>
+    );
+  }
 
   return (
     <span
@@ -1087,7 +1142,7 @@ function SafetyMarkerBadge({ feature, active, size = 36 }: { feature: SafetyFeat
         width: size,
         height: size,
         borderRadius: 8,
-        background: active ? feature.color : '#E5E7EB',
+        background: active ? feature.color : '#D1D5DB',
         border: '3px solid #fff',
         boxShadow: 'none',
         display: 'inline-flex',
@@ -1097,7 +1152,7 @@ function SafetyMarkerBadge({ feature, active, size = 36 }: { feature: SafetyFeat
       }}
     >
       <span style={{ color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-        <SafetyFeatureIcon id={feature.id} size={Math.round(size * 0.66)} />
+        <SafetyFeatureIcon id={feature.id} size={Math.round(size * 0.72)} />
       </span>
     </span>
   );

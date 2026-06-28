@@ -37,13 +37,48 @@ function FeatureMiniIcon({ id, size = 14 }: { id: SafetyFeatureId; size?: number
 }
 
 function FeatureBadge({ feature, active }: { feature: SafetyFeatureConfig; active: boolean }) {
+  if (feature.iconFile) {
+    return (
+      <span
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 6,
+          background: active ? feature.color : '#D1D5DB',
+          border: '2px solid #fff',
+          boxShadow: 'none',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <img
+          src={`/icons/${feature.iconFile}`}
+          width="24"
+          height="24"
+          style={{
+            display: 'block',
+            width: 24,
+            height: 24,
+            objectFit: 'cover',
+            filter: active ? 'none' : 'grayscale(1)',
+            opacity: active ? 1 : 0.45,
+          }}
+          alt=""
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       style={{
         width: 24,
         height: 24,
         borderRadius: 6,
-        background: active ? feature.color : '#E5E7EB',
+        background: active ? feature.color : '#D1D5DB',
         border: '2px solid #fff',
         boxShadow: 'none',
         display: 'inline-flex',
@@ -53,7 +88,7 @@ function FeatureBadge({ feature, active }: { feature: SafetyFeatureConfig; activ
       }}
     >
       <span style={{ color: '#fff', display: 'inline-flex' }}>
-        <FeatureMiniIcon id={feature.id} size={13} />
+        <FeatureMiniIcon id={feature.id} size={16} />
       </span>
     </span>
   );
@@ -116,7 +151,7 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: '#111827' }}>안심길</div>
-              <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>켜져 있을 때만 선택 요소로 안심길을 계산해요</div>
+              <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>켜져 있을 때만 선택한 요소로 안심길을 계산해요</div>
             </div>
             <button
               onClick={() => setSafeRouteEnabled((value) => !value)}
@@ -169,7 +204,7 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
                   );
                 })}
               </div>
-              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>최소 1개는 항상 선택되어 있어요</div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>최소 1개는 항상 선택되어 있어야 해요</div>
             </div>
           )}
         </section>

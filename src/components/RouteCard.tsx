@@ -1,4 +1,4 @@
-import type { RouteCandidate, SafetyFeatureId } from '../types';
+import type { RouteCandidate, SafetyFeatureConfig, SafetyFeatureId } from '../types';
 import { getSafetyFeature } from '../utils/safetyFeatures';
 
 interface Props {
@@ -39,6 +39,38 @@ function FeatureMiniIcon({ id, size = 12 }: { id: SafetyFeatureId; size?: number
   if (id === 'medical') return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" /></svg>;
   if (id === 'toilet') return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8" cy="8" r="1.5" fill="#fff" /><circle cx="16" cy="8" r="1.5" fill="#fff" /><path d="M7 11h2l1 6H6z" fill="#fff" /><path d="M15 11h2l1 6h-4z" fill="#fff" /><path d="M12 6v12" stroke="#fff" strokeWidth="1.3" /></svg>;
   return <svg {...common}><path d="M12 4v10" /><path d="M12 18h.01" /></svg>;
+}
+
+function FeatureTile({ feature }: { feature: SafetyFeatureConfig }) {
+  return (
+    <span
+      style={{
+        width: 17,
+        height: 17,
+        borderRadius: 4,
+        background: feature.color,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}
+    >
+      {feature.iconFile ? (
+        <img
+          src={`/icons/${feature.iconFile}`}
+          width="17"
+          height="17"
+          style={{ display: 'block', width: 17, height: 17, objectFit: 'cover' }}
+          alt=""
+        />
+      ) : (
+        <span style={{ color: '#fff', display: 'inline-flex' }}>
+          <FeatureMiniIcon id={feature.id} size={12} />
+        </span>
+      )}
+    </span>
+  );
 }
 
 export default function RouteCard({ type, route, active, onClick, selectedFeatureIds = [] }: Props) {
@@ -119,22 +151,7 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
           {safeFeatures.map((feature) => (
             <div key={feature.id} style={{ minWidth: 44, flex: '0 0 auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span
-                  style={{
-                    width: 17,
-                    height: 17,
-                    borderRadius: 4,
-                    background: feature.color,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <span style={{ color: '#fff', display: 'inline-flex' }}>
-                    <FeatureMiniIcon id={feature.id} size={10} />
-                  </span>
-                </span>
+                <FeatureTile feature={feature} />
                 <span style={{ fontSize: 15, fontWeight: 900, color: feature.color, lineHeight: 1 }}>{feature.count}</span>
               </div>
               <div style={{ marginTop: 3, fontSize: 11, color: feature.color, whiteSpace: 'nowrap' }}>

@@ -17,6 +17,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.npm-cache/
+.vercel-localappdata/
+.vercel-xdg-data/
+.vercel-xdg-config/
+.vercel-appdata/
 
 # Editor directories and files
 .vscode/*
