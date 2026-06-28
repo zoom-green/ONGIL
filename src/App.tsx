@@ -138,6 +138,7 @@ export default function App() {
   const [sharePrompt, setSharePrompt] = useState<{ message: string; createdAt: number } | null>(null);
   const lastSharePromptRef = useRef<number>(0);
   const kakaoSearchKeyRef = useRef('');
+  const childSafeHouseFetchAttemptedRef = useRef(false);
 
   // Kakao Maps SDK init
   useEffect(() => {
@@ -190,12 +191,15 @@ export default function App() {
     if ((visibleFeatures.light || routeNeeds('light')) && streetlightData.length === 0) loadStreetlightData().then(setStreetlightData);
     if ((visibleFeatures.food || routeNeeds('food')) && gyodongFoodPoints.length === 0) loadGyodongFoodSafetyPoints().then(setGyodongFoodPoints);
     if ((visibleFeatures.police || visibleFeatures.fire || visibleFeatures.toilet || routeNeeds('police') || routeNeeds('fire') || routeNeeds('toilet')) && lifeSafetyPoints.length === 0) fetchLifeSafetyPoints().then(setLifeSafetyPoints);
-    if ((visibleFeatures.childSafeHouse || routeNeeds('childSafeHouse')) && childSafeHouses.length === 0) fetchChildSafeHouses()
+    if ((visibleFeatures.childSafeHouse || routeNeeds('childSafeHouse')) && childSafeHouses.length === 0 && !childSafeHouseFetchAttemptedRef.current) {
+      childSafeHouseFetchAttemptedRef.current = true;
+      fetchChildSafeHouses()
       .then((items) => {
         setChildSafeHouses(items);
-        if (items.length === 0) setChildSafeHouseError('\uAC15\uB989\uC2DC \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.');
+        setChildSafeHouseError(items.length === 0 ? '\uAC15\uB989\uC2DC \uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.' : null);
       })
       .catch(() => setChildSafeHouseError('\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'));
+    }
   }, [visibleFeatures, safetySettings.safeRouteEnabled, safetySettings.selectedFeatures, cctvList, streetlightData.length, gyodongFoodPoints.length, lifeSafetyPoints.length, childSafeHouses.length]);
 
   // SOS ?몃━嫄?⑥닔
