@@ -44,6 +44,11 @@ interface SafetySettings {
   shareIntervalMinutes: 2 | 4 | 8;
 }
 
+function formatRouteTime(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes}분`;
+}
+
 function loadSafetySettings(): SafetySettings {
   const fallback: SafetySettings = {
     safeRouteEnabled: false,
@@ -112,6 +117,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapClickInfo, setMapClickInfo] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  const [routesPanelCollapsed, setRoutesPanelCollapsed] = useState(false);
 
   // ?ㅼ떆媛?GPS 異붿쟻 ??watchPosition 湲곕컲, heading ?ы븿
   const { location: userLocation, ready: locationReady } = useUserLocation();
@@ -325,7 +331,7 @@ export default function App() {
         setFastRoute(fast);
         if (enabledForRoute) {
           const routePoints = nextAllPoints.filter((point) => safetySettings.selectedFeatures.includes(point.featureId));
-          const routes = await fetchSelectedPedestrianRoutes(effectiveOrigin, place.position, routePoints, safetySettings.selectedFeatures);
+          const routes = await fetchSelectedPedestrianRoutes(effectiveOrigin, place.position, routePoints, safetySettings.selectedFeatures, fast);
           const { safeRoute: sr } = pickBestRoute(routes);
           setSafeRoute(sr);
           setActiveRoute('safe');
@@ -337,6 +343,7 @@ export default function App() {
         setWalkStarted(false);
         setRouteStatus('idle');
         setSharePrompt(null);
+        setRoutesPanelCollapsed(false);
         lastSharePromptRef.current = 0;
       } catch (e) {
         console.error(e);
@@ -347,19 +354,6 @@ export default function App() {
     },
     [effectiveOrigin, cctvList, streetlightData, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints, safetySettings]
   );
-
-  const handleReset = () => {
-    setStep('search');
-    setDestination(null);
-    setSafeRoute(null);
-    setFastRoute(null);
-    setLockedOrigin(null);
-    setError(null);
-    setWalkStarted(false);
-    setRouteStatus('idle');
-    setSharePrompt(null);
-    lastSharePromptRef.current = 0;
-  };
 
   const handleStartWalk = () => {
     setWalkStarted(true);
@@ -377,6 +371,7 @@ export default function App() {
 
   const handleMapClick = useCallback((pos: { lat: number; lng: number }, address: string) => {
     setMapClickInfo({ ...pos, address });
+    setRoutesPanelCollapsed(true);
   }, []);
 
   const handleSetOriginFromMap = useCallback(() => {
@@ -557,6 +552,9 @@ export default function App() {
     setSharePrompt({ message, createdAt: now });
   }, [walkStarted, userLocation, activeNodes, guardianPhones, safetySettings.shareIntervalMinutes, activeRoute, destination]);
 
+  const activePanelRoute = activeRoute === 'safe' ? safeRoute : fastRoute;
+  const canShowRoutePanel = step === 'routes' && !loading && companionDisplay === 'hidden';
+
   // SDK 오류 화면
   if (kakaoError) {
     return (
@@ -586,27 +584,26 @@ export default function App() {
     <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', position: 'relative', overflow: 'hidden' }}>
 
       {/* 헤더 */}
-      <div style={{ background: '#fff', padding: '14px 16px 10px', borderBottom: '1px solid #F1F5F9', zIndex: 10, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-          {step === 'routes' && (
-            <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', padding: '0', color: '#374151' }}>{'<'}</button>
-          )}
+      <div style={{ background: '#fff', padding: '10px 12px 8px', borderBottom: '1px solid #F1F5F9', zIndex: 10, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>ON:吉 온길</div>
-            <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '1px' }}>강릉 야간 안심 이동 서비스</div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: '#1E3A5F' }}>ON:吉 온길</div>
+            <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '1px' }}>강릉 야간 안심 이동 서비스</div>
           </div>
           <button
             onClick={() => setShowSettingsModal(true)}
             style={{
               marginLeft: 'auto',
-              fontSize: '11px',
-              padding: '6px 11px',
+              fontSize: '12px',
+              padding: '7px 12px',
               borderRadius: '999px',
-              border: '1px solid #E5E7EB',
-              background: '#fff',
-              color: '#334155',
+              border: '1px solid rgba(30,58,95,0.12)',
+              background: 'linear-gradient(135deg, #1E3A5F, #2563EB)',
+              color: '#fff',
               cursor: 'pointer',
-              fontWeight: 800,
+              fontWeight: 900,
+              boxShadow: '0 8px 18px rgba(37,99,235,0.24)',
+              lineHeight: 1,
             }}
           >
             설정
@@ -614,12 +611,12 @@ export default function App() {
         </div>
 
         {!locationReady ? (
-          <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '14px' }}>위치 확인 중...</div>
+          <div style={{ textAlign: 'center', padding: '10px', color: '#94A3B8', fontSize: '13px' }}>위치 확인 중...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {/* 출발吏 ?*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>출발</span>
+              <span style={{ fontSize: '10px', color: '#6B7280', fontWeight: 600, minWidth: '26px' }}>출발</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`origin-${step}-${Boolean(manualOrigin)}`}
@@ -633,7 +630,7 @@ export default function App() {
                 <button
                   onClick={handleOriginReset}
                   title="현재 위치로 초기화"
-                  style={{ padding: '8px', borderRadius: '8px', border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
+                  style={{ padding: '7px 8px', borderRadius: '8px', border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
                 >
                   GPS
                 </button>
@@ -641,7 +638,7 @@ export default function App() {
             </div>
             {/* 紐⑹쟻吏 ?*/}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600, minWidth: '28px' }}>도착</span>
+              <span style={{ fontSize: '10px', color: '#6B7280', fontWeight: 600, minWidth: '26px' }}>도착</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`dest-${step}`}
@@ -656,7 +653,7 @@ export default function App() {
         )}
 
         {showOverlays && (
-          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingTop: '10px', paddingBottom: 2 }}>
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingTop: '8px', paddingBottom: 1 }}>
             {SAFETY_FEATURES.map((feature) => {
               const active = visibleFeatures[feature.id];
               return (
@@ -669,16 +666,16 @@ export default function App() {
                     background: 'transparent',
                     color: active ? '#111827' : '#64748B',
                     padding: '2px 0',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: 800,
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 7,
+                    gap: 5,
                   }}
                 >
-                  <SafetyMarkerBadge feature={feature} active={active} size={32} />
+                  <SafetyMarkerBadge feature={feature} active={active} size={28} />
                   <span>{feature.label}</span>
                 </button>
               );
@@ -792,33 +789,37 @@ export default function App() {
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 30,
             background: '#fff', borderRadius: '16px 16px 0 0',
-            padding: '16px 16px 28px',
+            padding: '12px 12px 18px',
             boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
             fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
               <div>
                 <div style={{ fontSize: '11px', color: '#94A3B8', marginBottom: '3px' }}>선택한 위치</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1.4 }}>{mapClickInfo.address}</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', lineHeight: 1.35 }}>{mapClickInfo.address}</div>
               </div>
               <button
-                onClick={() => setMapClickInfo(null)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9CA3AF', padding: '2px 4px', lineHeight: 1 }}
+                onClick={() => {
+                  setMapClickInfo(null);
+                  setRoutesPanelCollapsed(false);
+                }}
+                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#9CA3AF', padding: '2px 4px', lineHeight: 1 }}
               >
-                             </button>
+                x
+              </button>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={handleSetOriginFromMap}
                 style={{
-                  flex: 1, padding: '15px 10px', borderRadius: '18px',
+                  flex: 1, padding: '12px 8px', borderRadius: '14px',
                   background: 'linear-gradient(180deg, #3D63F1 0%, #6FB9D8 100%)',
                   color: '#fff',
                   border: 'none',
-                  fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                  fontSize: '15px', fontWeight: 900, cursor: 'pointer',
                   boxShadow: '0 8px 18px rgba(56,102,242,0.25)',
                   fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 }}
               >
                 <WhitePinIcon accent="#3D63F1" />
@@ -827,14 +828,14 @@ export default function App() {
               <button
                 onClick={handleSetDestFromMap}
                 style={{
-                  flex: 1, padding: '15px 10px', borderRadius: '18px',
+                  flex: 1, padding: '12px 8px', borderRadius: '14px',
                   background: 'linear-gradient(180deg, #D64F77 0%, #DD7168 100%)',
                   color: '#fff',
                   border: 'none',
-                  fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                  fontSize: '15px', fontWeight: 900, cursor: 'pointer',
                   boxShadow: '0 8px 18px rgba(242,51,127,0.25)',
                   fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 }}
               >
                 <WhitePinIcon accent="#D64F77" />
@@ -888,6 +889,38 @@ export default function App() {
             }}
           >
             AI 음성 대화
+          </button>
+        )}
+
+        {canShowRoutePanel && routesPanelCollapsed && (safeRoute || fastRoute || error) && !mapClickInfo && (
+          <button
+            onClick={() => setRoutesPanelCollapsed(false)}
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: 90,
+              zIndex: 24,
+              border: 'none',
+              borderRadius: 999,
+              background: '#111827',
+              color: '#fff',
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 900,
+              boxShadow: '0 8px 22px rgba(15,23,42,0.26)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+            }}
+          >
+            <span>경로 보기</span>
+            {activePanelRoute && (
+              <span style={{ color: '#BFDBFE', fontWeight: 800 }}>
+                {activeRoute === 'safe' ? '안심길' : '빠른길'} {formatRouteTime(activePanelRoute.totalTime)}
+              </span>
+            )}
           </button>
         )}
 
@@ -980,16 +1013,34 @@ export default function App() {
       )}
 
       {/* 寃쎈줈 移대뱶 ?⑤꼸 ??숉뻾 以묒뿉??④? */}
-      {step === 'routes' && !loading && companionDisplay === 'hidden' && (
-        <div style={{ background: '#fff', padding: '16px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
+      {canShowRoutePanel && !routesPanelCollapsed && (
+        <div style={{ background: '#fff', padding: '10px 12px 12px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
           {error ? (
-            <div style={{ textAlign: 'center', padding: '16px', color: '#EF4444', fontSize: '14px', background: '#FEF2F2', borderRadius: '12px' }}>{error}</div>
+            <div style={{ textAlign: 'center', padding: '12px', color: '#EF4444', fontSize: '13px', background: '#FEF2F2', borderRadius: '12px' }}>{error}</div>
           ) : (safeRoute || fastRoute) ? (
             <>
-              <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '10px', fontWeight: 500 }}>
-                {destination?.name}까지의 경로
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: '#6B7280', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {destination?.name}까지의 경로
+                </div>
+                <button
+                  onClick={() => setRoutesPanelCollapsed(true)}
+                  style={{
+                    border: '1px solid #E5E7EB',
+                    background: '#F8FAFC',
+                    color: '#475569',
+                    borderRadius: 999,
+                    padding: '6px 10px',
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  접기
+                </button>
               </div>
-              <div style={{ display: 'flex', gap: '10px', minWidth: 0, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', gap: '8px', minWidth: 0, alignItems: 'stretch' }}>
                 {safeRoute && (
                   <RouteCard
                     type="safe"
@@ -1016,14 +1067,14 @@ export default function App() {
                   />
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
                 <button
                   onClick={handleStartWalk}
                   disabled={walkStarted}
                   style={{
                     flex: 1,
-                    height: 42,
-                    borderRadius: '12px',
+                    height: 40,
+                    borderRadius: '10px',
                     border: 'none',
                     background: walkStarted ? '#E2E8F0' : '#1E3A5F',
                     color: walkStarted ? '#64748B' : '#fff',
@@ -1034,7 +1085,7 @@ export default function App() {
                   {walkStarted ? '이동 추적 중' : '이동 시작'}
                 </button>
                 {walkStarted && (
-                  <div style={{ minWidth: 112, textAlign: 'center', fontSize: '12px', fontWeight: 900, color: routeStatus === 'offRoute' ? '#DC2626' : '#059669' }}>
+                  <div style={{ minWidth: 104, textAlign: 'center', fontSize: '11px', fontWeight: 900, color: routeStatus === 'offRoute' ? '#DC2626' : '#059669' }}>
                     {routeStatus === 'offRoute' ? '경로 이탈' : '경로 따라 이동'}
                   </div>
                 )}

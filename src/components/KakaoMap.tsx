@@ -31,8 +31,9 @@ function makeUserDotContent(heading: number | null): string {
   return `<div style="position:relative;width:20px;height:20px">${ring('0s', '-14px')}${ring('0.65s', '-7px')}${dot}${arrow}</div>`;
 }
 
-// Icons only appear when zoomed in to this level or closer (Kakao: smaller = more zoomed in)
-const ICON_ZOOM_THRESHOLD = 6;
+// Safety icons are detail-only markers. Kakao's smaller level means closer zoom.
+// Keep them hidden while the user is viewing the full route shape.
+const ICON_ZOOM_THRESHOLD = 3;
 const GANGNEUNG_BOUNDS = {
   south: 37.45,
   west: 128.65,

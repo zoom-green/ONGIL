@@ -3,6 +3,7 @@ import { calcSafetyScore, calcSelectedSafetyScore, distanceMeters, findSafeWaypo
 
 const TMAP_KEY = import.meta.env.VITE_TMAP_KEY as string;
 const TMAP_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1&format=json';
+const fastRouteCache = new Map<string, RouteCandidate>();
 
 interface TmapFeature {
   type: string;
@@ -67,6 +68,27 @@ async function callTmapPedestrian(
 
   if (nodes.length === 0) throw new Error('TMAP 경로 노드 없음');
   return { nodes, totalDistance, totalTime };
+}
+
+function fastRouteCacheKey(origin: LatLng, destination: LatLng): string {
+  return [
+    origin.lat.toFixed(6),
+    origin.lng.toFixed(6),
+    destination.lat.toFixed(6),
+    destination.lng.toFixed(6),
+  ].join(',');
+}
+
+function rawToFastRoute(raw: { nodes: RouteNode[]; totalDistance: number; totalTime: number }): RouteCandidate {
+  return {
+    nodes: raw.nodes,
+    totalDistance: raw.totalDistance,
+    totalTime: raw.totalTime,
+    safetyScore: 0,
+    cctvCount: 0,
+    safeSpotCount: 0,
+    featureCounts: {},
+  };
 }
 
 // 두 경로가 실질적으로 동일한지 비교 (중간 + 1/4 지점 모두 40m 이내면 동일 경로)
@@ -203,25 +225,30 @@ export async function fetchFastPedestrianRoute(
   origin: LatLng,
   destination: LatLng
 ): Promise<RouteCandidate> {
+  const cacheKey = fastRouteCacheKey(origin, destination);
+  const cached = fastRouteCache.get(cacheKey);
+  if (cached) return cached;
+
   const raw = await callTmapPedestrian(origin, destination);
-  return {
-    nodes: raw.nodes,
-    totalDistance: raw.totalDistance,
-    totalTime: raw.totalTime,
-    safetyScore: 0,
-    cctvCount: 0,
-    safeSpotCount: 0,
-    featureCounts: {},
-  };
+  const route = rawToFastRoute(raw);
+  fastRouteCache.set(cacheKey, route);
+  return route;
 }
 
 export async function fetchSelectedPedestrianRoutes(
   origin: LatLng,
   destination: LatLng,
   safetyPoints: SafetyPoint[],
-  selectedFeatures: SafetyFeatureId[]
+  selectedFeatures: SafetyFeatureId[],
+  baselineRoute?: RouteCandidate
 ): Promise<RouteCandidate[]> {
-  const rawA = await callTmapPedestrian(origin, destination);
+  const rawA = baselineRoute
+    ? {
+        nodes: baselineRoute.nodes,
+        totalDistance: baselineRoute.totalDistance,
+        totalTime: baselineRoute.totalTime,
+      }
+    : await callTmapPedestrian(origin, destination);
   const scoreA = calcSelectedSafetyScore(rawA.nodes, safetyPoints, selectedFeatures);
   const waypoints = findSelectedSafeWaypoints(rawA.nodes, safetyPoints, selectedFeatures, 2);
 

@@ -45,8 +45,8 @@ function FeatureTile({ feature }: { feature: SafetyFeatureConfig }) {
   return (
     <span
       style={{
-        width: 17,
-        height: 17,
+        width: 15,
+        height: 15,
         borderRadius: 4,
         background: feature.color,
         display: 'inline-flex',
@@ -59,9 +59,9 @@ function FeatureTile({ feature }: { feature: SafetyFeatureConfig }) {
       {feature.iconFile ? (
         <img
           src={`/icons/${feature.iconFile}`}
-          width="17"
-          height="17"
-          style={{ display: 'block', width: 17, height: 17, objectFit: 'cover' }}
+          width="15"
+          height="15"
+          style={{ display: 'block', width: 15, height: 15, objectFit: 'cover' }}
           alt=""
         />
       ) : (
@@ -93,26 +93,26 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
         minWidth: 0,
         border: `2px solid ${active ? accent : '#E5E7EB'}`,
         background: active ? bgActive : '#fff',
-        borderRadius: 18,
-        padding: '12px 12px 11px',
+        borderRadius: 14,
+        padding: '10px 10px 9px',
         textAlign: 'left',
         cursor: 'pointer',
         boxShadow: active ? '0 8px 22px rgba(79,111,100,0.16)' : 'none',
         fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
+            width: 32,
+            height: 32,
+            borderRadius: 10,
             background: isSafe ? '#4F6F64' : '#E5E7EB',
             color: isSafe ? '#fff' : '#D97745',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 20,
+            fontSize: 17,
             fontWeight: 900,
             flexShrink: 0,
           }}
@@ -121,41 +121,41 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: '#111827', whiteSpace: 'nowrap' }}>{label}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: '#111827', whiteSpace: 'nowrap' }}>{label}</span>
             {isSafe && active && (
-              <span style={{ border: '1.5px solid #4F6F64', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 900, color: '#4F6F64', whiteSpace: 'nowrap' }}>
+              <span style={{ border: '1.5px solid #4F6F64', borderRadius: 999, padding: '1px 6px', fontSize: 9, fontWeight: 900, color: '#4F6F64', whiteSpace: 'nowrap' }}>
                 추천
               </span>
             )}
           </div>
-          <div style={{ marginTop: 4, fontSize: 12, color: '#6B7280', lineHeight: 1.35 }}>{desc}</div>
+          <div style={{ marginTop: 3, fontSize: 11, color: '#6B7280', lineHeight: 1.35 }}>{desc}</div>
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#020617', lineHeight: 1 }}>{formatTime(route.totalTime)}</div>
-          <div style={{ marginTop: 5, fontSize: 12, color: '#6B7280' }}>{formatDist(route.totalDistance)}</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#020617', lineHeight: 1 }}>{formatTime(route.totalTime)}</div>
+          <div style={{ marginTop: 4, fontSize: 11, color: '#6B7280' }}>{formatDist(route.totalDistance)}</div>
         </div>
       </div>
 
       {isSafe && safeFeatures.length > 0 && (
         <div style={{
           display: 'flex',
-          gap: 14,
-          marginTop: 11,
-          paddingTop: 10,
+          gap: 10,
+          marginTop: 9,
+          paddingTop: 8,
           borderTop: '1px solid rgba(79,111,100,0.18)',
           overflowX: 'auto',
           overflowY: 'hidden',
           whiteSpace: 'nowrap',
         }}>
           {safeFeatures.map((feature) => (
-            <div key={feature.id} style={{ minWidth: 40, flex: '0 0 auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div key={feature.id} style={{ minWidth: 34, flex: '0 0 auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                 <FeatureTile feature={feature} />
-                <span style={{ fontSize: 15, fontWeight: 900, color: feature.color, lineHeight: 1 }}>{feature.count}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: feature.color, lineHeight: 1 }}>{feature.count}</span>
               </div>
-              <div style={{ marginTop: 3, fontSize: 11, color: feature.color, whiteSpace: 'nowrap' }}>
+              <div style={{ marginTop: 2, fontSize: 10, color: feature.color, whiteSpace: 'nowrap' }}>
                 {feature.label}
               </div>
             </div>
@@ -164,7 +164,7 @@ export default function RouteCard({ type, route, active, onClick, selectedFeatur
       )}
 
       {!isSafe && (
-        <div style={{ marginTop: 10, fontSize: 11, color: '#9CA3AF', textAlign: 'right' }}>T-map 기준</div>
+        <div style={{ marginTop: 8, fontSize: 10, color: '#9CA3AF', textAlign: 'right' }}>T-map 기준</div>
       )}
     </button>
   );

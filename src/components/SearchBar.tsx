@@ -197,8 +197,8 @@ export default function SearchBar({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           style={{
-            width: '100%', padding: '11px 36px 11px 14px', fontSize: '15px',
-            border: '1.5px solid #E5E7EB', borderRadius: '12px', outline: 'none',
+            width: '100%', padding: '9px 34px 9px 12px', fontSize: '14px',
+            border: '1.5px solid #E5E7EB', borderRadius: '10px', outline: 'none',
             boxSizing: 'border-box', background: '#F9FAFB', color: '#111827',
           }}
         />
@@ -224,13 +224,13 @@ export default function SearchBar({
       {open && (
         <ul style={{
           position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff',
-          border: '1px solid #E5E7EB', borderRadius: '12px', marginTop: '4px',
+          border: '1px solid #E5E7EB', borderRadius: '10px', marginTop: '4px',
           padding: 0, listStyle: 'none', zIndex: 9999,
           boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
           maxHeight: '280px', overflowY: 'auto',
         }}>
           {results.length === 0 ? (
-            <li style={{ padding: '14px 15px', fontSize: '13px', color: '#9CA3AF', textAlign: 'center' }}>
+            <li style={{ padding: '12px 13px', fontSize: '12px', color: '#9CA3AF', textAlign: 'center' }}>
               검색 결과 없음
             </li>
           ) : results.map((place, i) => (
@@ -238,23 +238,23 @@ export default function SearchBar({
               key={i}
               onMouseDown={() => handleSelect(place)}
               style={{
-                padding: '10px 15px', cursor: 'pointer',
+                padding: '9px 13px', cursor: 'pointer',
                 borderBottom: i < results.length - 1 ? '1px solid #F3F4F6' : 'none',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {place.name}
                 </div>
                 {place.address && place.address !== place.name && (
-                  <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {place.address}
                   </div>
                 )}
               </div>
               {place.distanceM != null && (
-                <div style={{ fontSize: '12px', color: '#3B82F6', fontWeight: 600, marginLeft: '10px', flexShrink: 0 }}>
+                <div style={{ fontSize: '11px', color: '#3B82F6', fontWeight: 600, marginLeft: '8px', flexShrink: 0 }}>
                   {formatDist(place.distanceM)}
                 </div>
               )}
