@@ -3,7 +3,7 @@ import type { SafetyFeatureConfig, SafetyFeatureId } from '../types';
 const LABELS = {
   food: '\uCE74\uD398/\uC74C\uC2DD\uC810',
   convenience: '\uD3B8\uC758\uC810',
-  police: '\uACBD\uCC30\uC11C/\uC9C0\uAD6C\uB300',
+  police: '\uACBD\uCC30\uC11C',
   fire: '\uC18C\uBC29\uC11C',
   light: '\uAC00\uB85C\uB4F1/\uBCF4\uC548\uB4F1',
   childSafeHouse: '\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',

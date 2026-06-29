@@ -963,7 +963,7 @@ export default function App() {
               fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
             }}
           >
-            AI 음성 대화
+            AI 동행
           </button>
         )}
 

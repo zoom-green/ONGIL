@@ -127,7 +127,7 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
         <section style={{ border: '1px solid #FECACA', borderRadius: 12, padding: 14, marginBottom: 16, background: '#FFF7F7' }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#991B1B', marginBottom: 6 }}>긴급 암호 멘트</div>
           <div style={{ fontSize: 12, color: '#7F1D1D', lineHeight: 1.5, marginBottom: 10 }}>
-            AI 음성 대화 중 이 말을 하면 통화가 자동 종료되고 SOS 화면으로 전환돼요.
+            AI 동행 중 이 말을 하면 통화가 자동 종료되고 SOS 화면으로 전환돼요.
           </div>
           <input
             value={emergencyPhrase}

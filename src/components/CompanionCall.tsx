@@ -109,7 +109,7 @@ export default function CompanionCall({
           ↓
         </button>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '12px', color: '#CBD5E1' }}>{callStarted ? `통화 중 · ${fmt(callSecs)}` : '음성 대화'}</div>
+          <div style={{ fontSize: '12px', color: '#CBD5E1' }}>{callStarted ? `통화 중 · ${fmt(callSecs)}` : 'AI 동행'}</div>
           <div style={{ fontSize: '16px', fontWeight: 800, marginTop: '4px' }}>{PERSONA_LABELS[persona]}</div>
         </div>
         <div style={{ width: '40px' }} />
