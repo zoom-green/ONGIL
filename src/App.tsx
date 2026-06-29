@@ -14,9 +14,9 @@ import { loadCctvData } from './utils/cctv';
 import { loadStreetlightData } from './utils/streetlight';
 import { fetchSafeSpots, fetchSafeSpotsInBounds } from './utils/kakaoLocal';
 import { fetchChildSafeHouses } from './utils/childSafeHouses';
-import { pickBestRoute, distanceMeters, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
+import { pickBestRoute, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
 import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
-import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
+import { sendGuardianSMSAll } from './utils/sms';
 import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
 import { SAFETY_FEATURES, getSafetyFeature } from './utils/safetyFeatures';
 import {
@@ -41,6 +41,7 @@ type AppStep = 'search' | 'routes';
 
 interface SafetySettings {
   emergencyPhrase: string;
+  locationShareIntervalMinutes: 2 | 4 | 6;
 }
 
 function formatRouteTime(seconds: number): string {
@@ -51,15 +52,35 @@ function formatRouteTime(seconds: number): string {
 function loadSafetySettings(): SafetySettings {
   const fallback: SafetySettings = {
     emergencyPhrase: '',
+    locationShareIntervalMinutes: 2,
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '');
+    const interval = Number(parsed?.locationShareIntervalMinutes);
     return {
       emergencyPhrase: typeof parsed?.emergencyPhrase === 'string' ? parsed.emergencyPhrase : '',
+      locationShareIntervalMinutes: interval === 2 || interval === 4 || interval === 6 ? interval : 2,
     };
   } catch {
     return fallback;
   }
+}
+
+function buildRouteLocationShareMessage(
+  routeType: 'safe' | 'fast',
+  location: LatLng | null,
+  destinationName?: string
+): string {
+  const locText = location
+    ? `https://maps.google.com/?q=${location.lat.toFixed(5)},${location.lng.toFixed(5)}`
+    : '현재 위치 확인 중';
+  const routeLabel = routeType === 'safe' ? '안심길' : '빠른길';
+  return [
+    '[온길] 위치 공유',
+    `선택 경로: ${routeLabel}`,
+    destinationName ? `목적지: ${destinationName}` : '',
+    `현재 위치: ${locText}`,
+  ].filter(Boolean).join('\n');
 }
 
 function normalizeSecretPhrase(value: string): string {
@@ -126,7 +147,10 @@ export default function App() {
   const companionActive = companionDisplay !== 'hidden';
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [emergencyTrigger, setEmergencyTrigger] = useState<'sos' | 'secret'>('sos');
-  const lastSmsLocRef = useRef<LatLng | null>(null);
+  const [locationSharePrompt, setLocationSharePrompt] = useState<{ routeType: 'safe' | 'fast'; dueAt: number } | null>(null);
+  const [locationShareCycle, setLocationShareCycle] = useState(0);
+  const locationShareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gpsOriginRef = useRef<LatLng | null>(null);
 
   const [guardianPhones, setGuardianPhones] = useState<[string, string]>(loadGuardianPhones);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -166,6 +190,7 @@ export default function App() {
     if (userLocation) {
       const loc: LatLng = { lat: userLocation.lat, lng: userLocation.lng };
       setGpsOrigin(loc);
+      gpsOriginRef.current = loc;
       // 吏?以묒떖??꾩쭅 媛뺣쫱 湲곕낯媛믪씠硫?泥?GPS 醫뚰몴濡?ㅻ깄
       setUserPos((prev) =>
         prev.lat === GANGNEUNG_CENTER.lat && prev.lng === GANGNEUNG_CENTER.lng ? loc : prev
@@ -173,6 +198,7 @@ export default function App() {
     } else if (locationReady && !userLocation) {
       // GPS 沅뚰븳 嫄곕? ??ㅽ뙣 ?媛뺣쫱 ?쇳꽣 ?대갚
       setGpsOrigin(GANGNEUNG_CENTER);
+      gpsOriginRef.current = GANGNEUNG_CENTER;
     }
   }, [userLocation, locationReady]);
 
@@ -213,26 +239,51 @@ export default function App() {
     if (spoken.includes(secret)) triggerSOSBySecretPhrase();
   }, [safetySettings.emergencyPhrase, triggerSOSBySecretPhrase]);
 
-  // ?숉뻾 以?500m留덈떎 蹂댄샇?SMS
+  const selectedRoute = activeRoute === 'safe' ? safeRoute : fastRoute;
+  const routeShareSessionKey = selectedRoute && destination
+    ? `${activeRoute}:${destination.name}:${destination.position.lat.toFixed(5)},${destination.position.lng.toFixed(5)}:${Math.round(selectedRoute.totalDistance)}`
+    : '';
+
+  // 경로 선택 후 설정한 시간마다 보호자 위치 공유 알림을 띄움
   useEffect(() => {
-    if (!companionActive || !gpsOrigin) return;
+    if (locationShareTimerRef.current) {
+      clearTimeout(locationShareTimerRef.current);
+      locationShareTimerRef.current = null;
+    }
+    setLocationSharePrompt(null);
+
+    if (!routeShareSessionKey) return;
     const valid = guardianPhones.filter(p => p.trim());
     if (valid.length === 0) return;
-    if (!lastSmsLocRef.current) {
-      lastSmsLocRef.current = gpsOrigin;
-      return;
-    }
-    const dist = distanceMeters(gpsOrigin, lastSmsLocRef.current);
-    if (dist >= 500) {
-      lastSmsLocRef.current = gpsOrigin;
-      sendGuardianSMSAll(valid, buildGuardianMessage('location_update', gpsOrigin, destination?.name));
-    }
-  }, [gpsOrigin, companionActive, guardianPhones, destination]);
+    const intervalMs = safetySettings.locationShareIntervalMinutes * 60 * 1000;
+    locationShareTimerRef.current = setTimeout(() => {
+      setLocationSharePrompt({ routeType: activeRoute, dueAt: Date.now() });
+    }, intervalMs);
 
-  // Reset SMS location when companion mode stops
-  useEffect(() => {
-    if (!companionActive) lastSmsLocRef.current = null;
-  }, [companionActive]);
+    return () => {
+      if (locationShareTimerRef.current) {
+        clearTimeout(locationShareTimerRef.current);
+        locationShareTimerRef.current = null;
+      }
+    };
+  }, [
+    activeRoute,
+    guardianPhones,
+    locationShareCycle,
+    routeShareSessionKey,
+    safetySettings.locationShareIntervalMinutes,
+  ]);
+
+  const sendScheduledLocationShare = useCallback(() => {
+    const valid = guardianPhones.filter(p => p.trim());
+    if (valid.length === 0 || !locationSharePrompt) return;
+    sendGuardianSMSAll(
+      valid,
+      buildRouteLocationShareMessage(locationSharePrompt.routeType, gpsOriginRef.current, destination?.name)
+    );
+    setLocationSharePrompt(null);
+    setLocationShareCycle((value) => value + 1);
+  }, [destination?.name, guardianPhones, locationSharePrompt]);
 
   const saveSettings = (settings: SafetySettings, phones: [string, string]) => {
     setSafetySettings(settings);
@@ -688,6 +739,82 @@ export default function App() {
           onSave={saveSettings}
           onClose={() => setShowSettingsModal(false)}
         />
+      )}
+
+      {locationSharePrompt && (
+        <div style={{
+          position: 'absolute',
+          top: 92,
+          left: 12,
+          right: 12,
+          zIndex: 80,
+          background: '#EFF6FF',
+          border: '1.5px solid #93C5FD',
+          borderRadius: 14,
+          padding: 12,
+          boxShadow: '0 10px 28px rgba(37,99,235,0.18)',
+          fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
+        }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              background: '#2563EB',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+              fontWeight: 900,
+              flexShrink: 0,
+            }}>
+              위치
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: '#1E3A8A' }}>
+                보호자에게 위치를 공유할 시간이에요
+              </div>
+              <div style={{ marginTop: 3, fontSize: 11, color: '#475569', lineHeight: 1.4 }}>
+                {safetySettings.locationShareIntervalMinutes}분 주기 · {locationSharePrompt.routeType === 'safe' ? '안심길' : '빠른길'} 이동 중
+              </div>
+            </div>
+            <button
+              onClick={sendScheduledLocationShare}
+              style={{
+                border: 0,
+                borderRadius: 999,
+                background: '#2563EB',
+                color: '#fff',
+                padding: '10px 12px',
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              문자 열기
+            </button>
+            <button
+              onClick={() => {
+                setLocationSharePrompt(null);
+                setLocationShareCycle((value) => value + 1);
+              }}
+              style={{
+                border: 0,
+                background: 'transparent',
+                color: '#64748B',
+                fontSize: 18,
+                cursor: 'pointer',
+                padding: '4px 2px',
+                lineHeight: 1,
+              }}
+              aria-label="위치 공유 알림 닫기"
+            >
+              x
+            </button>
+          </div>
+        </div>
       )}
 
       {/* 吏??곸뿭 */}

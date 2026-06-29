@@ -15,12 +15,12 @@ export const SAFETY_FEATURES: SafetyFeatureConfig[] = [
   { id: 'cctv', label: 'CCTV', iconFile: 'custom-cctv.png', color: '#005CFF', weight: 3, nightWeight: 5 },
   { id: 'food', label: LABELS.food, iconFile: 'custom-food.png', color: '#FF6A00', weight: 3, nightWeight: 6 },
   { id: 'convenience', label: LABELS.convenience, iconFile: 'custom-convenience.png', color: '#00B84F', weight: 3, nightWeight: 5 },
-  { id: 'police', label: LABELS.police, iconFile: 'police.png', color: '#4F6FE5', weight: 5, nightWeight: 8 },
+  { id: 'police', label: LABELS.police, iconFile: 'custom-police.png', color: '#0B28B8', weight: 5, nightWeight: 8 },
   { id: 'fire', label: LABELS.fire, iconFile: 'custom-fire.png', color: '#E80000', weight: 4, nightWeight: 6 },
   { id: 'light', label: LABELS.light, color: '#F0DB4F', weight: 1, nightWeight: 4 },
-  { id: 'childSafeHouse', label: LABELS.childSafeHouse, color: '#61A874', weight: 3, nightWeight: 4 },
-  { id: 'medical', label: LABELS.medical, color: '#CF4F78', weight: 4, nightWeight: 6 },
-  { id: 'toilet', label: LABELS.toilet, color: '#9A65DE', weight: 2, nightWeight: 3 },
+  { id: 'childSafeHouse', label: LABELS.childSafeHouse, iconFile: 'custom-child-safe-house.png', color: '#FFC400', weight: 3, nightWeight: 4 },
+  { id: 'medical', label: LABELS.medical, iconFile: 'custom-medical.png', color: '#E7198A', weight: 4, nightWeight: 6 },
+  { id: 'toilet', label: LABELS.toilet, iconFile: 'custom-emergency-bell.png', color: '#7A3BEA', weight: 2, nightWeight: 3 },
 ];
 
 export function getSafetyFeature(id: SafetyFeatureId): SafetyFeatureConfig {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 interface SafetySettings {
   emergencyPhrase: string;
+  locationShareIntervalMinutes: 2 | 4 | 6;
 }
 
 interface Props {
@@ -20,10 +21,13 @@ function formatPhone(raw: string): string {
 
 export default function SettingsModal({ initialSettings, initialPhones, onSave, onClose }: Props) {
   const [emergencyPhrase, setEmergencyPhrase] = useState(initialSettings.emergencyPhrase);
+  const [locationShareIntervalMinutes, setLocationShareIntervalMinutes] = useState<2 | 4 | 6>(
+    initialSettings.locationShareIntervalMinutes
+  );
   const [phones, setPhones] = useState<[string, string]>(initialPhones);
 
   const save = () => {
-    onSave({ emergencyPhrase: emergencyPhrase.trim() }, phones);
+    onSave({ emergencyPhrase: emergencyPhrase.trim(), locationShareIntervalMinutes }, phones);
   };
 
   return (
@@ -86,6 +90,38 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
               }}
             />
           ))}
+        </section>
+
+        <section style={{ border: '1px solid #DBEAFE', borderRadius: 12, padding: 14, marginBottom: 12, background: '#F8FBFF' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#1E3A5F', marginBottom: 6 }}>위치 공유 주기</div>
+          <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5, marginBottom: 10 }}>
+            경로를 선택해 이동할 때, 선택한 시간마다 보호자에게 위치를 보낼 수 있는 버튼이 떠요.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {([2, 4, 6] as const).map((minutes) => {
+              const selected = locationShareIntervalMinutes === minutes;
+              return (
+                <button
+                  key={minutes}
+                  type="button"
+                  onClick={() => setLocationShareIntervalMinutes(minutes)}
+                  style={{
+                    height: 42,
+                    borderRadius: 10,
+                    border: selected ? '2px solid #2563EB' : '1px solid #CBD5E1',
+                    background: selected ? '#EFF6FF' : '#fff',
+                    color: selected ? '#1D4ED8' : '#475569',
+                    fontSize: 14,
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
+                  }}
+                >
+                  {minutes}분
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         <section style={{ border: '1px solid #FECACA', borderRadius: 12, padding: 14, marginBottom: 16, background: '#FFF7F7' }}>
