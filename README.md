@@ -1,73 +1,203 @@
-# React + TypeScript + Vite
+# ON:길
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+강릉 야간 보행자를 위한 AI 안심 이동 서비스입니다.
 
-Currently, two official plugins are available:
+ON:길은 목적지까지 단순히 빠르게 이동하는 길만 보여주는 것이 아니라, CCTV, 가로등, 편의점, 경찰서, 소방서, 안전지킴이집, 응급의료시설, 비상벨 등 주변 안전시설을 함께 고려해 더 안심할 수 있는 보행 경로를 제공합니다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 서비스 개요
 
-## React Compiler
+야간 보행자는 어두운 길, 인적이 드문 길, 위급 상황 대응의 어려움 때문에 불안감을 느낄 수 있습니다. ON:길은 지도 기반 경로 탐색, 안전시설 시각화, 보호자 위치 공유, SOS 긴급 대응, AI 음성 동행 기능을 통해 혼자 이동하는 사용자의 불안감을 줄이고 안전한 이동을 돕습니다.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 주요 기능
 
-## Expanding the ESLint configuration
+- 현재 위치 기반 지도 표시
+- 출발지 및 도착지 검색
+- 지도 클릭을 통한 출발지/도착지 설정
+- 빠른길과 안심길 비교
+- 안전시설 지도 표시 및 토글
+- 안심길 주변 안전시설 표시
+- 이동 시작 후 현재 위치 추적
+- 보호자 연락처 저장
+- 보호자 위치 공유 문자
+- SOS 긴급 신고 화면
+- 112 전화 연결
+- 보호자 긴급 문자
+- AI 음성 동행
+- AI 페르소나 선택
+- 긴급 암호 멘트 감지 및 SOS 전환
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 안전시설 데이터
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+ON:길은 다음 안전시설을 지도 표시와 안심길 계산에 활용합니다.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- CCTV
+- 가로등/보안등
+- 음식점/카페
+- 편의점
+- 경찰서/지구대/파출소
+- 소방서
+- 안전지킴이집
+- 응급의료시설
+- 비상벨
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 안심길
+
+안심길은 이동 시간만 기준으로 하지 않고, 경로 주변의 안전 요소를 함께 반영합니다.
+
+- CCTV와 가로등이 부족한 구간을 줄이는 경로를 우선합니다.
+- 편의점, 음식점, 경찰서, 소방서, 안전지킴이집 등 도움을 요청할 수 있는 거점을 고려합니다.
+- 빠른길과 비교해 예상 시간, 거리, 주변 안전시설 정보를 함께 보여줍니다.
+
+## AI 음성 동행
+
+사용자는 이동 중 AI와 음성으로 대화할 수 있습니다.
+
+- 엄마, 아빠, 오빠 페르소나 선택
+- 실시간 음성 대화
+- 통화 상태 표시
+- 통화 화면 축소/확대
+- 통화 종료
+- 설정한 긴급 암호 멘트 감지 시 SOS 화면으로 전환
+
+## SOS 및 보호자 기능
+
+- SOS 버튼을 통한 긴급 신고 화면 전환
+- 5초 카운트다운 기반 긴급 신고 흐름
+- 112 전화 연결
+- 보호자 긴급 문자 전송
+- 보호자 위치 공유 문자 전송
+- 위치 공유 주기 설정
+- 보호자 연락처 최대 2명 저장
+
+## 사용 기술
+
+- React
+- TypeScript
+- Vite
+- Kakao Maps JavaScript SDK
+- Kakao Local API
+- Tmap 보행자 경로 API
+- Tmap POI API
+- OpenAI Realtime API
+- Capacitor
+- Vercel Serverless Functions
+
+## 사용 데이터 및 API
+
+- Kakao Maps JavaScript SDK
+- Kakao Local API
+- Tmap 보행자 경로 API
+- Tmap POI API
+- SafeDream 안전지킴이집 API
+- VWorld 2D Data API
+- 생활안전/SafeMap 계열 데이터
+- OpenAI Realtime API
+- 강릉 CCTV CSV 데이터
+- 강릉 가로등/보안등 JSON 데이터
+- 강릉 교동 음식점/카페 수집 데이터
+
+## 프로젝트 구조
+
+```text
+src/
+  components/       화면 컴포넌트
+  hooks/            위치 및 AI 통화 관련 훅
+  utils/            경로, 안전시설, 문자, API 유틸
+  data/             fallback 데이터
+api/                Vercel 서버리스 API
+server/             로컬 개발용 API 서버
+public/data/        지도 표시 및 경로 계산용 정적 데이터
+scripts/            데이터 수집 및 가공 스크립트
+android/            Capacitor Android 앱 프로젝트
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 실행 방법
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+의존성을 설치합니다.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+개발 서버를 실행합니다.
+
+```bash
+npm run dev
+```
+
+기본 실행 주소는 다음과 같습니다.
+
+```text
+http://localhost:5173
+```
+
+로컬 개발 시 Vite 프론트엔드와 Express API 서버가 함께 실행됩니다.
+
+## 빌드
+
+```bash
+npm run build
+```
+
+빌드 결과는 `dist/` 폴더에 생성됩니다.
+
+## 테스트
+
+```bash
+npm test
+```
+
+안심길 계산과 안전 점수 관련 로직 테스트가 포함되어 있습니다.
+
+## 환경변수
+
+실행을 위해 필요한 키는 `.env`에 설정합니다. 실제 키가 들어간 `.env` 파일은 저장소에 올리지 않습니다.
+
+예시:
+
+```env
+VITE_KAKAO_JS_KEY=
+VITE_KAKAO_REST_KEY=
+VITE_TMAP_KEY=
+VITE_API_BASE_URL=
+
+OPENAI_API_KEY=
+SAFEDREAM_ESNTL_ID=
+SAFEDREAM_AUTH_KEY=
+VWORLD_API_KEY=
+VWORLD_API_DOMAIN=
+SAFEMAP_SERVICE_KEY=
+```
+
+주의사항:
+
+- `VITE_`로 시작하는 값은 브라우저 번들에 포함될 수 있습니다.
+- `OPENAI_API_KEY` 같은 서버 전용 키는 반드시 백엔드 환경변수로만 관리해야 합니다.
+- `.env` 파일은 제출 ZIP, 공개 저장소, 문서에 포함하지 않습니다.
+
+## 배포
+
+Vercel 배포를 기준으로 구성되어 있습니다.
+
+- 프론트엔드 빌드 결과: `dist`
+- API 경로: `api/*`
+- API가 아닌 모든 경로는 `index.html`로 rewrite
+
+## 모바일 앱 구조
+
+ON:길은 모바일 웹앱 형태로 구현되어 있으며, Capacitor를 통해 Android 앱 형태로 패키징할 수 있는 구조를 포함합니다.
+
+대회 시연은 URL 기반 웹앱으로 진행할 수 있고, 실제 서비스 확장 시 설치형 모바일 앱으로 전환할 수 있습니다.
+
+## 제출용 설명
+
+ON:길은 모바일 앱 사용성을 기준으로 설계한 웹앱입니다. 대회 시연과 접근성을 위해 URL로 실행 가능한 형태를 제공하며, Android 앱 패키징이 가능한 구조도 함께 포함하고 있습니다.
+
+## 주의사항
+
+- 위치 권한을 허용해야 현재 위치 기반 기능을 사용할 수 있습니다.
+- 문자 전송은 실행 환경에 따라 동작 방식이 다를 수 있습니다.
+- 웹 환경에서는 문자 앱 작성 화면이 열리고, 실제 전송은 사용자가 확인해야 할 수 있습니다.
+- AI 음성 동행은 마이크 권한이 필요합니다.
+- 안전시설 데이터는 공공데이터와 지도 API 기반이므로 실제 현장 상황과 차이가 있을 수 있습니다.
+- 위급 상황에서는 서비스 안내보다 실제 112 신고와 주변 도움 요청이 우선입니다.
