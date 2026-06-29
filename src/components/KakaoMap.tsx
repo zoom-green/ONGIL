@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LatLng, MapBounds, RouteCandidate, CctvPoint, SafeSpot, StreetlightPoint, ChildSafeHousePoint, SafetyPoint } from '../types';
 import type { UserLocation } from '../hooks/useUserLocation';
 import { getSafetyFeature } from '../utils/safetyFeatures';
@@ -31,18 +31,7 @@ function makeUserDotContent(heading: number | null): string {
   return `<div style="position:relative;width:20px;height:20px">${ring('0s', '-14px')}${ring('0.65s', '-7px')}${dot}${arrow}</div>`;
 }
 
-const GANGNEUNG_BOUNDS = {
-  south: 37.45,
-  west: 128.65,
-  north: 37.95,
-  east: 129.12,
-};
-const SAFETY_MARKER_ZOOM_THRESHOLD = 6;
-
-function isInsideGangneungBounds(lat: number, lng: number): boolean {
-  return lat >= GANGNEUNG_BOUNDS.south && lat <= GANGNEUNG_BOUNDS.north
-    && lng >= GANGNEUNG_BOUNDS.west && lng <= GANGNEUNG_BOUNDS.east;
-}
+const SAFETY_MARKER_ZOOM_THRESHOLD = 3;
 
 function getRenderRouteNodes(nodes: LatLng[], maxPoints = 240): LatLng[] {
   if (nodes.length <= maxPoints) return nodes;
@@ -60,8 +49,10 @@ function toKakaoPath(nodes: LatLng[]) {
   return getRenderRouteNodes(nodes).map((n) => new kakao.maps.LatLng(n.lat, n.lng));
 }
 
-function canShowSafetyMarkers(map: kakao.maps.Map, showOverlays: boolean, hasRouteEvidence: boolean, interacting: boolean): boolean {
-  return !interacting && map.getLevel() <= SAFETY_MARKER_ZOOM_THRESHOLD && (showOverlays || hasRouteEvidence);
+function canShowSafetyMarker(map: kakao.maps.Map, showOverlays: boolean, routeOnly: boolean, interacting: boolean): boolean {
+  if (interacting) return false;
+  if (routeOnly) return map.getLevel() <= SAFETY_MARKER_ZOOM_THRESHOLD;
+  return showOverlays;
 }
 
 function safetyIconSvg(featureId: string, size: number): string {
@@ -112,9 +103,6 @@ interface Props {
   childSafeHouses?: ChildSafeHousePoint[];
   safetyPoints?: SafetyPoint[];
   routeEvidencePoints?: SafetyPoint[];
-  safemapWmsLayers?: string[];
-  crimeWmsKey?: string;
-  showCrimeOverlay?: boolean;
 }
 
 export default function KakaoMap({
@@ -134,24 +122,17 @@ export default function KakaoMap({
   childSafeHouses,
   safetyPoints = [],
   routeEvidencePoints = [],
-  safemapWmsLayers = [],
-  crimeWmsKey,
-  showCrimeOverlay,
 }: Props) {
+  const [markersZoomedIn, setMarkersZoomedIn] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const objectsRef = useRef<(kakao.maps.Polyline | kakao.maps.Marker | kakao.maps.CustomOverlay)[]>([]);
   const routeLineRefs = useRef<Array<{ line: kakao.maps.Polyline; opacity: number }>>([]);
   // tracks only CCTV/safespot icon overlays for zoom-based visibility
-  const iconOverlaysRef = useRef<kakao.maps.CustomOverlay[]>([]);
+  const iconOverlaysRef = useRef<Array<{ overlay: kakao.maps.CustomOverlay; routeOnly: boolean }>>([]);
   const safetyOverlayCacheRef = useRef<Map<string, { overlay: kakao.maps.CustomOverlay; content: string }>>(new Map());
   // separate overlay for the live user-position dot (not cleared on route redraw)
   const userOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
-  // 범죄주의구간 WMS 이미지 오버레이
-  const crimeImgRef = useRef<HTMLImageElement | null>(null);
-  const crimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const safemapWmsImgsRef = useRef<HTMLImageElement[]>([]);
-  const safemapWmsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boundsEmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBoundsKeyRef = useRef('');
   const lastFitRouteKeyRef = useRef('');
@@ -186,8 +167,10 @@ export default function KakaoMap({
     hasRouteEvidenceRef.current = routeEvidencePoints.length > 0;
     const map = mapRef.current;
     if (!map) return;
-    const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
-    iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
+    iconOverlaysRef.current.forEach(({ overlay, routeOnly }) => {
+      const visible = canShowSafetyMarker(map, showOverlays, routeOnly, mapInteractingRef.current);
+      overlay.setMap(visible ? map : null);
+    });
   }, [showOverlays, routeEvidencePoints.length]);
 
   // map initialisation + zoom listener (runs once)
@@ -198,6 +181,7 @@ export default function KakaoMap({
       level: 4,
     });
     mapRef.current = map;
+    setMarkersZoomedIn(map.getLevel() <= SAFETY_MARKER_ZOOM_THRESHOLD);
 
     const emitBounds = () => {
       if (!onBoundsChangeRef.current) return;
@@ -227,13 +211,15 @@ export default function KakaoMap({
     };
     const hideSafetyOverlaysWhileMoving = () => {
       mapInteractingRef.current = true;
-      iconOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+      iconOverlaysRef.current.forEach(({ overlay }) => overlay.setMap(null));
       routeLineRefs.current.forEach(({ line }) => (line as any).setOptions({ strokeOpacity: 0.16 }));
     };
     const restoreSafetyOverlaysAfterMoving = () => {
       mapInteractingRef.current = false;
-      const visible = canShowSafetyMarkers(map, showOverlaysRef.current, hasRouteEvidenceRef.current, false);
-      iconOverlaysRef.current.forEach((overlay) => overlay.setMap(visible ? map : null));
+      iconOverlaysRef.current.forEach(({ overlay, routeOnly }) => {
+        const visible = canShowSafetyMarker(map, showOverlaysRef.current, routeOnly, false);
+        overlay.setMap(visible ? map : null);
+      });
       routeLineRefs.current.forEach(({ line, opacity }) => (line as any).setOptions({ strokeOpacity: opacity }));
       emitBoundsSoon();
     };
@@ -245,8 +231,11 @@ export default function KakaoMap({
     kakao.maps.event.addListener(map, 'zoom_start', hideSafetyOverlaysWhileMoving);
     // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'zoom_changed', () => {
-      const visible = canShowSafetyMarkers(map, showOverlaysRef.current, hasRouteEvidenceRef.current, mapInteractingRef.current);
-      iconOverlaysRef.current.forEach((o) => o.setMap(visible ? map : null));
+      setMarkersZoomedIn(map.getLevel() <= SAFETY_MARKER_ZOOM_THRESHOLD);
+      iconOverlaysRef.current.forEach(({ overlay, routeOnly }) => {
+        const visible = canShowSafetyMarker(map, showOverlaysRef.current, routeOnly, mapInteractingRef.current);
+        overlay.setMap(visible ? map : null);
+      });
     });
     // @ts-expect-error kakao types incomplete
     kakao.maps.event.addListener(map, 'idle', restoreSafetyOverlaysAfterMoving);
@@ -321,163 +310,6 @@ export default function KakaoMap({
     };
   }, []);
 
-  // 범죄주의구간 WMS 오버레이 — 10등급(최고 밀도)만 필터링해 표시
-  const crimeReqRef = useRef(0);
-  useEffect(() => {
-    const map = mapRef.current;
-    const container = containerRef.current;
-
-    if (!showCrimeOverlay || !crimeWmsKey) {
-      if (crimeImgRef.current) {
-        crimeImgRef.current.remove();
-        crimeImgRef.current = null;
-      }
-      return;
-    }
-
-    // 오버레이 img 최초 1회 생성
-    if (!crimeImgRef.current) {
-      const img = document.createElement('img');
-      img.style.cssText =
-        'position:absolute;top:0;left:0;width:100%;height:100%;' +
-        'opacity:0;pointer-events:none;z-index:10;';
-      container!.appendChild(img);
-      crimeImgRef.current = img;
-    }
-
-    // 이미지 소스 교체 후 로드 완료 시 표시
-    const applyImage = (src: string, opacity: number) => {
-      const el = crimeImgRef.current;
-      if (!el) return;
-      el.style.opacity = '0';
-      el.onload = () => { if (crimeImgRef.current) crimeImgRef.current.style.opacity = String(opacity); };
-      el.src = src;
-    };
-
-    const refreshImage = () => {
-      if (!map || !container) return;
-      const reqId = ++crimeReqRef.current;
-      // @ts-expect-error kakao types incomplete
-      const bounds = map.getBounds();
-      const sw = bounds.getSouthWest();
-      const ne = bounds.getNorthEast();
-      const w = container.offsetWidth || 512;
-      const h = container.offsetHeight || 512;
-      const bbox = `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
-      const url = `https://safemap.go.kr/openapi2/IF_0087_WMS?serviceKey=${crimeWmsKey}&srs=EPSG:4326&bbox=${bbox}&format=image/png&width=${w}&height=${h}&transparent=TRUE`;
-
-      // Canvas로 10등급 픽셀(#bd0026 = rgb(189,0,38))만 남기고 나머지 투명화
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { applyImage(url, 0.45); return; }
-
-      const tmp = new Image();
-      tmp.crossOrigin = 'anonymous';
-      tmp.onload = () => {
-        if (reqId !== crimeReqRef.current) return; // 오래된 요청 무시
-        canvas.width = tmp.width;
-        canvas.height = tmp.height;
-        ctx.drawImage(tmp, 0, 0);
-        try {
-          const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const px = d.data;
-          for (let i = 0; i < px.length; i += 4) {
-            if (px[i + 3] === 0) continue;
-            // 10등급 rgb(189,0,38), 9등급 rgb(211,26,35) → G≤18로 구분
-            const is10 = px[i] >= 155 && px[i] <= 210 && px[i + 1] <= 18 && px[i + 2] >= 15 && px[i + 2] <= 65;
-            px[i + 3] = is10 ? 220 : 0;
-          }
-          ctx.putImageData(d, 0, 0);
-          applyImage(canvas.toDataURL('image/png'), 1.0);
-        } catch {
-          // CORS 차단 시 전체 등급 fallback
-          applyImage(url, 0.45);
-        }
-      };
-      tmp.onerror = () => { if (reqId === crimeReqRef.current) applyImage(url, 0.45); };
-      tmp.src = url;
-    };
-
-    refreshImage();
-
-    // 지도 이동/줌: 즉시 숨겨서 어긋남 방지, 350ms 후 새 좌표로 재요청
-    const onBoundsChange = () => {
-      if (crimeImgRef.current) crimeImgRef.current.style.opacity = '0';
-      if (crimeTimerRef.current) clearTimeout(crimeTimerRef.current);
-      crimeTimerRef.current = setTimeout(refreshImage, 700);
-    };
-    // @ts-expect-error kakao types incomplete
-    kakao.maps.event.addListener(map, 'idle', onBoundsChange);
-
-    return () => {
-      if (crimeTimerRef.current) clearTimeout(crimeTimerRef.current);
-      // @ts-expect-error kakao types incomplete
-      kakao.maps.event.removeListener(map, 'idle', onBoundsChange);
-      if (crimeImgRef.current) {
-        crimeImgRef.current.remove();
-        crimeImgRef.current = null;
-      }
-    };
-  }, [showCrimeOverlay, crimeWmsKey]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const container = containerRef.current;
-
-    const clearImages = () => {
-      safemapWmsImgsRef.current.forEach((img) => img.remove());
-      safemapWmsImgsRef.current = [];
-    };
-
-    if (!map || !container || safemapWmsLayers.length === 0 || !showOverlays) {
-      clearImages();
-      return;
-    }
-
-    const refreshImages = () => {
-      const center = map.getCenter();
-      if (!isInsideGangneungBounds(center.getLat(), center.getLng())) {
-        clearImages();
-        return;
-      }
-
-      // @ts-expect-error kakao types incomplete
-      const bounds = map.getBounds();
-      const sw = bounds.getSouthWest();
-      const ne = bounds.getNorthEast();
-      const w = container.offsetWidth || 512;
-      const h = container.offsetHeight || 512;
-      const bbox = `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
-
-      clearImages();
-      safemapWmsImgsRef.current = safemapWmsLayers.map((url, index) => {
-        const img = document.createElement('img');
-        img.style.cssText =
-          'position:absolute;top:0;left:0;width:100%;height:100%;' +
-          `opacity:${index === 0 ? '0.72' : '0.58'};pointer-events:none;z-index:${11 + index};`;
-        img.src = `${url}&bbox=${encodeURIComponent(bbox)}&width=${w}&height=${h}`;
-        container.appendChild(img);
-        return img;
-      });
-    };
-
-    refreshImages();
-
-    const onBoundsChange = () => {
-      if (safemapWmsTimerRef.current) clearTimeout(safemapWmsTimerRef.current);
-      safemapWmsTimerRef.current = setTimeout(refreshImages, 700);
-    };
-
-    // @ts-expect-error kakao types incomplete
-    kakao.maps.event.addListener(map, 'idle', onBoundsChange);
-
-    return () => {
-      if (safemapWmsTimerRef.current) clearTimeout(safemapWmsTimerRef.current);
-      // @ts-expect-error kakao types incomplete
-      kakao.maps.event.removeListener(map, 'idle', onBoundsChange);
-      clearImages();
-    };
-  }, [safemapWmsLayers, showOverlays]);
 
   // update center
   useEffect(() => {
@@ -519,13 +351,13 @@ export default function KakaoMap({
       objectsRef.current.push(o);
     };
     const activeSafetyOverlayKeys = new Set<string>();
-    const scheduleSafetyOverlay = (key: string, position: LatLng, content: string) => {
+    const scheduleSafetyOverlay = (key: string, position: LatLng, content: string, routeOnly: boolean) => {
       activeSafetyOverlayKeys.add(key);
       const cached = safetyOverlayCacheRef.current.get(key);
       if (cached && cached.content === content) {
-        const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
+        const visible = canShowSafetyMarker(map, showOverlays, routeOnly, mapInteractingRef.current);
         cached.overlay.setMap(visible ? map : null);
-        iconOverlaysRef.current.push(cached.overlay);
+        iconOverlaysRef.current.push({ overlay: cached.overlay, routeOnly });
         return;
       }
 
@@ -536,10 +368,10 @@ export default function KakaoMap({
         zIndex: 20,
       } as kakao.maps.CustomOverlayOptions & { zIndex: number };
       const overlay = new kakao.maps.CustomOverlay(overlayOptions);
-      const visible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
+      const visible = canShowSafetyMarker(map, showOverlays, routeOnly, mapInteractingRef.current);
       overlay.setMap(visible ? map : null);
       safetyOverlayCacheRef.current.set(key, { overlay, content });
-      iconOverlaysRef.current.push(overlay);
+      iconOverlaysRef.current.push({ overlay, routeOnly });
     };
 
     // draw fast route (gray, behind)
@@ -600,10 +432,8 @@ export default function KakaoMap({
       add(line);
     }
 
-    // Safety icons and route evidence points appear only when the map is zoomed in enough.
-    if (showOverlays || routeEvidencePoints.length > 0) {
-      const iconsVisible = canShowSafetyMarkers(map, showOverlays, routeEvidencePoints.length > 0, mapInteractingRef.current);
-
+    // Toggle markers ignore zoom; route evidence markers appear only when zoomed in.
+    if (showOverlays || (markersZoomedIn && routeEvidencePoints.length > 0)) {
       const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -631,24 +461,31 @@ export default function KakaoMap({
         );
       };
       const visibleSafetyPoints = new Map<string, SafetyPoint>();
+      const toggleSafetyPointIds = new Set<string>();
       if (showOverlays) {
-        for (const point of safetyPoints) visibleSafetyPoints.set(point.id, point);
+        for (const point of safetyPoints) {
+          visibleSafetyPoints.set(point.id, point);
+          toggleSafetyPointIds.add(point.id);
+        }
       }
-      for (const point of routeEvidencePoints) visibleSafetyPoints.set(point.id, point);
+      if (markersZoomedIn) {
+        for (const point of routeEvidencePoints) visibleSafetyPoints.set(point.id, point);
+      }
 
       for (const point of visibleSafetyPoints.values()) {
         const feature = getSafetyFeature(point.featureId);
         const title = escapeHtml(point.name || feature.label);
         const label = point.featureId === 'childSafeHouse' && point.displayLabel ? escapeHtml(point.displayLabel) : undefined;
         const content = makeSafetyMarkerContent(feature, title, 30, label);
-        if (iconsVisible) scheduleSafetyOverlay(`safety:${point.id}`, point, content);
+        const routeOnly = !toggleSafetyPointIds.has(point.id);
+        scheduleSafetyOverlay(`${routeOnly ? 'route' : 'toggle'}:safety:${point.id}`, point, content, routeOnly);
       }
 
       for (const c of cctvList) {
         const feature = getSafetyFeature('cctv');
         const title = escapeHtml(c.name || feature.label);
         const content = makeSafetyMarkerContent(feature, title);
-        if (iconsVisible) scheduleSafetyOverlay(`cctv:${c.lat.toFixed(6)},${c.lng.toFixed(6)}:${title}`, c, content);
+        scheduleSafetyOverlay(`cctv:${c.lat.toFixed(6)},${c.lng.toFixed(6)}:${title}`, c, content, false);
       }
 
       for (const s of safeSpots) {
@@ -667,13 +504,13 @@ export default function KakaoMap({
             : 'food';
         const feature = getSafetyFeature(featureId);
         const content = makeSafetyMarkerContent(feature, escapeHtml(s.name || feature.label));
-        if (iconsVisible) scheduleSafetyOverlay(`safeSpot:${s.lat.toFixed(6)},${s.lng.toFixed(6)}:${featureId}:${s.name}`, s, content);
+        scheduleSafetyOverlay(`safeSpot:${s.lat.toFixed(6)},${s.lng.toFixed(6)}:${featureId}:${s.name}`, s, content, false);
       }
 
       for (const light of streetlights) {
         const feature = getSafetyFeature('light');
         const content = makeSafetyMarkerContent(feature, escapeHtml(light.name || feature.label));
-        if (iconsVisible) scheduleSafetyOverlay(`light:${light.lat.toFixed(6)},${light.lng.toFixed(6)}:${light.name ?? ''}`, light, content);
+        scheduleSafetyOverlay(`light:${light.lat.toFixed(6)},${light.lng.toFixed(6)}:${light.name ?? ''}`, light, content, false);
       }
     }
     for (const [key, cached] of safetyOverlayCacheRef.current) {
@@ -764,7 +601,7 @@ export default function KakaoMap({
       }
     };
 
-  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses, safetyPoints, routeEvidencePoints]);
+  }, [safeRoute, fastRoute, activeRoute, origin, destination, cctvList, safeSpots, streetlights, showOverlays, childSafeHouses, safetyPoints, routeEvidencePoints, markersZoomedIn]);
 
   return (
     <div

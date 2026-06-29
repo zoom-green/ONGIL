@@ -19,7 +19,7 @@ import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
 import { useShakeDetection } from './hooks/useShakeDetection';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
 import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
-import { DEFAULT_SELECTED_FEATURES, SAFETY_FEATURES, getSafetyFeature } from './utils/safetyFeatures';
+import { SAFETY_FEATURES, getSafetyFeature } from './utils/safetyFeatures';
 import {
   cctvToSafetyPoints,
   streetlightsToSafetyPoints,
@@ -32,16 +32,15 @@ import {
 
 const GUARDIAN_STORAGE_KEY = 'ongil_guardian_phones_v2';
 const SETTINGS_STORAGE_KEY = 'ongil_safety_settings_v1';
-const CRIME_WMS_KEY = 'W5ZQMXVH-W5ZQ-W5ZQ-W5ZQ-W5ZQMXVHPG';
 const GANGNEUNG_CENTER: LatLng = { lat: 37.7519, lng: 128.8761 };
 const EMPTY_SAFETY_POINTS: SafetyPoint[] = [];
-const EMPTY_WMS_LAYERS: string[] = [];
+const ALL_ROUTE_FEATURE_IDS: SafetyFeatureId[] = SAFETY_FEATURES.map((feature) => feature.id);
+const ROUTE_EVIDENCE_FEATURE_IDS: SafetyFeatureId[] = ALL_ROUTE_FEATURE_IDS.filter((id) => id !== 'light');
+const MAP_TOGGLE_FEATURES = SAFETY_FEATURES.filter((feature) => feature.id !== 'light');
 
 type AppStep = 'search' | 'routes';
 
 interface SafetySettings {
-  safeRouteEnabled: boolean;
-  selectedFeatures: SafetyFeatureId[];
   shareIntervalMinutes: 2 | 4 | 8;
 }
 
@@ -52,18 +51,11 @@ function formatRouteTime(seconds: number): string {
 
 function loadSafetySettings(): SafetySettings {
   const fallback: SafetySettings = {
-    safeRouteEnabled: false,
-    selectedFeatures: DEFAULT_SELECTED_FEATURES,
     shareIntervalMinutes: 4,
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '');
-    const selected = Array.isArray(parsed?.selectedFeatures)
-      ? parsed.selectedFeatures.filter((id: string) => SAFETY_FEATURES.some((feature) => feature.id === id))
-      : fallback.selectedFeatures;
     return {
-      safeRouteEnabled: Boolean(parsed?.safeRouteEnabled),
-      selectedFeatures: selected.length > 0 ? selected : fallback.selectedFeatures,
       shareIntervalMinutes: parsed?.shareIntervalMinutes === 2 || parsed?.shareIntervalMinutes === 8 ? parsed.shareIntervalMinutes : 4,
     };
   } catch {
@@ -186,12 +178,11 @@ export default function App() {
 
   // CCTV + 媛濡쒕벑 ?곗씠?濡쒕뱶
   useEffect(() => {
-    const routeNeeds = (id: SafetyFeatureId) => safetySettings.safeRouteEnabled && safetySettings.selectedFeatures.includes(id);
-    if ((visibleFeatures.cctv || routeNeeds('cctv')) && cctvList === GANGNEUNG_CCTV_FALLBACK) loadCctvData().then(setCctvList);
-    if ((visibleFeatures.light || routeNeeds('light')) && streetlightData.length === 0) loadStreetlightData().then(setStreetlightData);
-    if ((visibleFeatures.food || routeNeeds('food')) && gyodongFoodPoints.length === 0) loadGyodongFoodSafetyPoints().then(setGyodongFoodPoints);
-    if ((visibleFeatures.police || visibleFeatures.fire || visibleFeatures.toilet || routeNeeds('police') || routeNeeds('fire') || routeNeeds('toilet')) && lifeSafetyPoints.length === 0) fetchLifeSafetyPoints().then(setLifeSafetyPoints);
-    if ((visibleFeatures.childSafeHouse || routeNeeds('childSafeHouse')) && childSafeHouses.length === 0 && !childSafeHouseFetchAttemptedRef.current) {
+    if (cctvList === GANGNEUNG_CCTV_FALLBACK) loadCctvData().then(setCctvList);
+    if (streetlightData.length === 0) loadStreetlightData().then(setStreetlightData);
+    if (gyodongFoodPoints.length === 0) loadGyodongFoodSafetyPoints().then(setGyodongFoodPoints);
+    if (lifeSafetyPoints.length === 0) fetchLifeSafetyPoints().then(setLifeSafetyPoints);
+    if (childSafeHouses.length === 0 && !childSafeHouseFetchAttemptedRef.current) {
       childSafeHouseFetchAttemptedRef.current = true;
       fetchChildSafeHouses()
       .then((items) => {
@@ -200,7 +191,7 @@ export default function App() {
       })
       .catch(() => setChildSafeHouseError('\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'));
     }
-  }, [visibleFeatures, safetySettings.safeRouteEnabled, safetySettings.selectedFeatures, cctvList, streetlightData.length, gyodongFoodPoints.length, lifeSafetyPoints.length, childSafeHouses.length]);
+  }, [cctvList, streetlightData.length, gyodongFoodPoints.length, lifeSafetyPoints.length, childSafeHouses.length]);
 
   // SOS ?몃━嫄?⑥닔
   const triggerSOSByButton = useCallback(() => {
@@ -322,30 +313,38 @@ export default function App() {
           lat: (effectiveOrigin.lat + place.position.lat) / 2,
           lng: (effectiveOrigin.lng + place.position.lng) / 2,
         };
-        const spots = await fetchSafeSpots(center, 1500);
-        setSafeSpots(spots);
-        const nextAllPoints = mergeSafetyPoints([
-          ...cctvToSafetyPoints(cctvList),
-          ...streetlightsToSafetyPoints(streetlightData),
-          ...kakaoSafeSpotsToSafetyPoints(spots),
-          ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
-          ...gyodongFoodPoints,
-          ...lifeSafetyPoints,
-          ...childSafeHousePoints,
+        const [spots, latestCctvList, latestStreetlights, latestGyodongFoodPoints, latestLifeSafetyPoints, latestChildSafeHouses] = await Promise.all([
+          fetchSafeSpots(center, 1500),
+          cctvList === GANGNEUNG_CCTV_FALLBACK ? loadCctvData() : Promise.resolve(cctvList),
+          streetlightData.length === 0 ? loadStreetlightData() : Promise.resolve(streetlightData),
+          gyodongFoodPoints.length === 0 ? loadGyodongFoodSafetyPoints() : Promise.resolve(gyodongFoodPoints),
+          lifeSafetyPoints.length === 0 ? fetchLifeSafetyPoints() : Promise.resolve(lifeSafetyPoints),
+          childSafeHouses.length === 0 ? fetchChildSafeHouses().catch(() => childSafeHouses) : Promise.resolve(childSafeHouses),
         ]);
-        const enabledForRoute = safetySettings.safeRouteEnabled && safetySettings.selectedFeatures.length > 0;
+        setSafeSpots(spots);
+        setCctvList(latestCctvList);
+        setStreetlightData(latestStreetlights);
+        setGyodongFoodPoints(latestGyodongFoodPoints);
+        setLifeSafetyPoints(latestLifeSafetyPoints);
+        setChildSafeHouses(latestChildSafeHouses);
+        const nextAllPoints = [
+          ...cctvToSafetyPoints(latestCctvList),
+          ...streetlightsToSafetyPoints(latestStreetlights),
+          ...mergeSafetyPoints([
+            ...kakaoSafeSpotsToSafetyPoints(spots),
+            ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
+            ...latestGyodongFoodPoints,
+            ...latestLifeSafetyPoints,
+            ...childSafeHousesToSafetyPoints(latestChildSafeHouses),
+          ]),
+        ];
         const fast = await fetchFastPedestrianRoute(effectiveOrigin, place.position);
         setFastRoute(fast);
-        if (enabledForRoute) {
-          const routePoints = nextAllPoints.filter((point) => safetySettings.selectedFeatures.includes(point.featureId));
-          const routes = await fetchSelectedPedestrianRoutes(effectiveOrigin, place.position, routePoints, safetySettings.selectedFeatures, fast);
-          const { safeRoute: sr } = pickBestRoute(routes);
-          setSafeRoute(sr);
-          setActiveRoute('safe');
-        } else {
-          setSafeRoute(null);
-          setActiveRoute('fast');
-        }
+        const routePoints = nextAllPoints.filter((point) => ALL_ROUTE_FEATURE_IDS.includes(point.featureId));
+        const routes = await fetchSelectedPedestrianRoutes(effectiveOrigin, place.position, routePoints, ALL_ROUTE_FEATURE_IDS, fast);
+        const { safeRoute: sr } = pickBestRoute(routes);
+        setSafeRoute(sr);
+        setActiveRoute('safe');
         setLockedOrigin(effectiveOrigin);
         setWalkStarted(false);
         setRouteStatus('idle');
@@ -359,7 +358,7 @@ export default function App() {
         setLoading(false);
       }
     },
-    [effectiveOrigin, cctvList, streetlightData, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints, safetySettings]
+    [effectiveOrigin, cctvList, streetlightData, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHouses]
   );
 
   const handleStartWalk = () => {
@@ -413,41 +412,62 @@ export default function App() {
     [visibleFeatures]
   );
 
-  const routeCandidateSafetyPoints = useMemo(() => mergeSafetyPoints([
+  const routeCandidateSafetyPoints = useMemo(() => [
     ...cctvToSafetyPoints(cctvList),
     ...streetlightsToSafetyPoints(streetlightData),
-    ...kakaoSafeSpotsToSafetyPoints(safeSpots),
-    ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
-    ...gyodongFoodPoints,
-    ...lifeSafetyPoints,
-    ...childSafeHousePoints,
-  ]), [cctvList, streetlightData, safeSpots, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints]);
+    ...mergeSafetyPoints([
+      ...kakaoSafeSpotsToSafetyPoints(safeSpots),
+      ...kakaoSafeSpotsToSafetyPoints(viewportSafeSpots),
+      ...gyodongFoodPoints,
+      ...lifeSafetyPoints,
+      ...childSafeHousePoints,
+    ]),
+  ], [cctvList, streetlightData, safeSpots, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHousePoints]);
 
   const routeEvidenceSafetyPoints = useMemo((): SafetyPoint[] => {
-    if (activeRoute !== 'safe' || !safeRoute || !safetySettings.selectedFeatures.length) return EMPTY_SAFETY_POINTS;
+    if (activeRoute !== 'safe' || !safeRoute) return EMPTY_SAFETY_POINTS;
     return collectSelectedRouteSafetyPoints(
       safeRoute.nodes,
       routeCandidateSafetyPoints,
-      safetySettings.selectedFeatures
+      ROUTE_EVIDENCE_FEATURE_IDS
     );
-  }, [activeRoute, safeRoute, routeCandidateSafetyPoints, safetySettings.selectedFeatures]);
+  }, [activeRoute, safeRoute, routeCandidateSafetyPoints]);
 
   const visibleRouteEvidenceSafetyPoints = useMemo((): SafetyPoint[] => {
-    return routeEvidenceSafetyPoints.filter((point) => point.featureId !== 'light');
+    const capByFeature: Partial<Record<SafetyFeatureId, number>> = {
+      cctv: 40,
+      food: 25,
+      convenience: 25,
+      police: 12,
+      fire: 8,
+      childSafeHouse: 12,
+      medical: 8,
+      toilet: 12,
+    };
+    const counts: Partial<Record<SafetyFeatureId, number>> = {};
+    const selected: SafetyPoint[] = [];
+    for (const point of routeEvidenceSafetyPoints) {
+      if (point.featureId === 'light') continue;
+      const count = counts[point.featureId] ?? 0;
+      if (count >= (capByFeature[point.featureId] ?? 12)) continue;
+      counts[point.featureId] = count + 1;
+      selected.push(point);
+    }
+    return selected;
   }, [routeEvidenceSafetyPoints]);
 
   const displaySafetyPoints = useMemo((): SafetyPoint[] => {
     if (!showOverlays || !hasVisibleFeature) return EMPTY_SAFETY_POINTS;
     const capByFeature: Partial<Record<SafetyFeatureId, number>> = {
-      cctv: 180,
-      light: 1200,
-      food: 180,
-      convenience: 120,
-      childSafeHouse: 100,
-      police: 120,
-      fire: 80,
-      medical: 80,
-      toilet: 120,
+      cctv: 70,
+      light: 180,
+      food: 60,
+      convenience: 55,
+      childSafeHouse: 45,
+      police: 35,
+      fire: 25,
+      medical: 25,
+      toilet: 35,
     };
     const inCurrentBounds = (point: LatLng) => {
       if (!mapBounds) return true;
@@ -665,7 +685,7 @@ export default function App() {
 
         {showOverlays && (
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingTop: '8px', paddingBottom: 1 }}>
-            {SAFETY_FEATURES.map((feature) => {
+            {MAP_TOGGLE_FEATURES.map((feature) => {
               const active = visibleFeatures[feature.id];
               return (
                 <button
@@ -730,13 +750,10 @@ export default function App() {
           childSafeHouses={[]}
           safetyPoints={displaySafetyPoints}
           routeEvidencePoints={visibleRouteEvidenceSafetyPoints}
-          safemapWmsLayers={EMPTY_WMS_LAYERS}
           showOverlays={showOverlays}
           onMapClick={handleMapClick}
           onBoundsChange={setMapBounds}
           userLocation={userLocation}
-          crimeWmsKey={CRIME_WMS_KEY}
-          showCrimeOverlay={showOverlays && hasVisibleFeature}
         />
 
         {childSafeHouseError && (
@@ -1057,7 +1074,7 @@ export default function App() {
                     type="safe"
                     route={safeRoute}
                     fastRoute={fastRoute}
-                    selectedFeatureIds={safetySettings.selectedFeatures}
+                    selectedFeatureIds={ALL_ROUTE_FEATURE_IDS}
                     active={activeRoute === 'safe'}
                     onClick={() => {
                       setActiveRoute('safe');

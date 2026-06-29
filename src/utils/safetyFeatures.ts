@@ -8,7 +8,7 @@ const LABELS = {
   light: '\uAC00\uB85C\uB4F1/\uBCF4\uC548\uB4F1',
   childSafeHouse: '\uC548\uC804\uC9C0\uD0B4\uC774\uC9D1',
   medical: '\uC751\uAE09\uC758\uB8CC\uC2DC\uC124',
-  toilet: '\uBE44\uC0C1\uBCA8 \uACF5\uC911\uD654\uC7A5\uC2E4',
+  toilet: '\uBE44\uC0C1\uBCA8',
 };
 
 export const SAFETY_FEATURES: SafetyFeatureConfig[] = [
@@ -21,15 +21,6 @@ export const SAFETY_FEATURES: SafetyFeatureConfig[] = [
   { id: 'childSafeHouse', label: LABELS.childSafeHouse, color: '#61A874', weight: 3, nightWeight: 4 },
   { id: 'medical', label: LABELS.medical, color: '#CF4F78', weight: 4, nightWeight: 6 },
   { id: 'toilet', label: LABELS.toilet, color: '#9A65DE', weight: 2, nightWeight: 3 },
-];
-
-export const DEFAULT_SELECTED_FEATURES: SafetyFeatureId[] = [
-  'cctv',
-  'food',
-  'convenience',
-  'police',
-  'fire',
-  'light',
 ];
 
 export function getSafetyFeature(id: SafetyFeatureId): SafetyFeatureConfig {
