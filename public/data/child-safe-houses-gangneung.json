@@ -1,0 +1,572 @@
+{
+  "generatedAt": "2026-06-29T16:27:19.718Z",
+  "region": "강원특별자치도 강릉시",
+  "source": "안전Dream/VWorld API static fallback",
+  "count": 57,
+  "errors": [],
+  "items": [
+    {
+      "id": "vworld:LT_P_MGPRTFA.8893",
+      "name": "강릉문구",
+      "lat": 37.7528478,
+      "lng": 128.8884374,
+      "address": "강원도 강릉시 토성로 102-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-7369",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8892",
+      "name": "경주문구",
+      "lat": 37.7687666,
+      "lng": 128.8791162,
+      "address": "강원도 강릉시 솔올로 76-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-642-0182",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1125",
+      "name": "경포하나마트",
+      "lat": 37.8046955,
+      "lng": 128.9033893,
+      "address": "강원도 강릉시 해안로 517-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-644-2415",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.10503",
+      "name": "교동문구점",
+      "lat": 37.7677833,
+      "lng": 128.8924638,
+      "address": "강원도 강릉시 율곡로2968번길 9-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8899",
+      "name": "김은선헤어코디",
+      "lat": 37.7435118,
+      "lng": 128.8933977,
+      "address": "강원도 강릉시 남부로125번길 18-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-2881",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.12596",
+      "name": "꼬꼬마트",
+      "lat": 37.7227537,
+      "lng": 128.9630233,
+      "address": "강원도 강릉시 단경로 37-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-643-2982",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50036091",
+      "name": "꼬마김밥",
+      "lat": 37.75816194,
+      "lng": 128.9218828,
+      "address": "강원특별자치도 강릉시 성덕포남로 22-4",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1134",
+      "name": "꼬마또래",
+      "lat": 37.7574587,
+      "lng": 128.9215966,
+      "address": "강원도 강릉시 성덕포남로 21-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-652-0004",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50037962",
+      "name": "또왔네문구사",
+      "lat": 37.75619306,
+      "lng": 128.9098956,
+      "address": "강원특별자치도 강릉시 입암로91번길 57-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-648-3080",
+      "source": "안전Dream"
+    },
+    {
+      "id": "safedream:50043585",
+      "name": "라온하제",
+      "lat": 37.77548828,
+      "lng": 128.9312928,
+      "address": "강원특별자치도 강릉시 경강로2477번길 8-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1135",
+      "name": "럭키문구사",
+      "lat": 37.7439201,
+      "lng": 128.8918368,
+      "address": "강원도 강릉시 남부로125번길 37-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-647-0040",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8896",
+      "name": "롯데리아교동점",
+      "lat": 37.73400071,
+      "lng": 128.9340878,
+      "address": "강원도 강릉시 교동광장로 106-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-645-3485",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8641",
+      "name": "명주 할인마트",
+      "lat": 37.7426588,
+      "lng": 128.8774117,
+      "address": "강원도 강릉시 강변로 72-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-3445",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.992",
+      "name": "미노이용소",
+      "lat": 37.8225297,
+      "lng": 128.8496758,
+      "address": "강원도 강릉시 미노길 54-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-644-1056",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.11998",
+      "name": "산야초건강명가",
+      "lat": 37.8842646,
+      "lng": 128.8246131,
+      "address": "강원도 강릉시 연주로 359-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-661-9998",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.966",
+      "name": "서울메디컬약국",
+      "lat": 37.7616083,
+      "lng": 128.8999709,
+      "address": "강원도 강릉시 옥가로 57-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-647-2995",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8895",
+      "name": "성산약국",
+      "lat": 37.7183534,
+      "lng": 128.8321057,
+      "address": "강원도 강릉시 구산길 26-0",
+      "categoryName": "아동���전지킴이집",
+      "phone": "033-643-0008",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040292",
+      "name": "세븐일레븐 강릉남강점",
+      "lat": 37.76754429,
+      "lng": 128.9139342,
+      "address": "강원특별자치도 강릉시 경강로 2310-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-648-1320",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1133",
+      "name": "세븐일레븐 경강로점",
+      "lat": 37.7649798,
+      "lng": 128.909137,
+      "address": "강원도 강릉시 경강로 2258-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-645-5455",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.3739",
+      "name": "송정문구사",
+      "lat": 37.7753034,
+      "lng": 128.9313191,
+      "address": "강원도 강릉시 경강로 2485-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-652-2689",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040324",
+      "name": "아이비헤어",
+      "lat": 37.74458471,
+      "lng": 128.8795929,
+      "address": "강원특별자치도 강릉시 강변로 92-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-2323",
+      "source": "안전Dream"
+    },
+    {
+      "id": "safedream:50036088",
+      "name": "어센틱음악학원",
+      "lat": 37.76543149,
+      "lng": 128.8814822,
+      "address": "강원특별자치도 강릉시 율곡초교길39번길 19-10",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-648-8111",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8894",
+      "name": "왕산주유소",
+      "lat": 37.6717606,
+      "lng": 128.8385452,
+      "address": "강원도 강릉시 백두대간로 1986-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-648-8022",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1124",
+      "name": "우리들팬시",
+      "lat": 37.7809104,
+      "lng": 128.914872,
+      "address": "강원도 강릉시 강릉대로527번길 33-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-651-1063",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1137",
+      "name": "우리문구사",
+      "lat": 37.7710626,
+      "lng": 128.9066689,
+      "address": "강원도 강릉시 보래미길 1-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-651-2314",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.12603",
+      "name": "우진문구사",
+      "lat": 37.8859247,
+      "lng": 128.8255638,
+      "address": "강원도 강릉시 주문로 22-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-662-3475",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.5894",
+      "name": "유니분식나라",
+      "lat": 37.7736308,
+      "lng": 128.9147936,
+      "address": "강원도 강릉시 하평5길 51-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-653-5288",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8828",
+      "name": "유천마트",
+      "lat": 37.76098133706389,
+      "lng": 128.87046333839905,
+      "address": "강원도 강릉시 선수촌로 112-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-0033",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50036080",
+      "name": "이마트24 강릉센트럴점",
+      "lat": 37.7694202,
+      "lng": 128.8788116,
+      "address": "강원특별자치도 강릉시 솔올로 83-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.998",
+      "name": "정동진하나로마트",
+      "lat": 37.6881454,
+      "lng": 129.033302,
+      "address": "강원도 강릉시 헌화로 1060-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-644-5075",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.991",
+      "name": "주영반점",
+      "lat": 37.8990434,
+      "lng": 128.8281209,
+      "address": "강원도 강릉시 약수동길 10-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-661-7555",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.12598",
+      "name": "중앙마트",
+      "lat": 37.6093915,
+      "lng": 129.0358697,
+      "address": "강원도 강릉시 현내시장길 69-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-534-2070",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1336",
+      "name": "차수학",
+      "lat": 37.7654133,
+      "lng": 128.8817324,
+      "address": "강원도 강릉시 율곡초교길39번길 19-14",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-643-3837",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1000",
+      "name": "창신당금은방",
+      "lat": 37.609644,
+      "lng": 129.0358506,
+      "address": "강원도 강릉시 현내시장길 67-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-534-2718",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.12376",
+      "name": "쿠쿠홈시스",
+      "lat": 37.7563836,
+      "lng": 128.8843375,
+      "address": "강원도 강릉시 강릉대로 127-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-6355",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040244",
+      "name": "푸르넷 옥천공부방",
+      "lat": 37.75622462,
+      "lng": 128.9020357,
+      "address": "강원특별자치도 강릉시 수문길21번길 13-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-648-2469",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.10505",
+      "name": "피아노숲",
+      "lat": 37.7471421,
+      "lng": 128.8982412,
+      "address": "강원도 강릉시 연화봉길10번길 26-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-642-5281",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1127",
+      "name": "한국타이어안전점",
+      "lat": 37.7700843,
+      "lng": 128.9038307,
+      "address": "강원도 강릉시 명륜로 138-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-652-3773",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1136",
+      "name": "한솔문구사",
+      "lat": 37.7732643,
+      "lng": 128.9144145,
+      "address": "강원도 강릉시 하평3길 52-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-653-1938",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8379",
+      "name": "해피마트",
+      "lat": 37.7544358,
+      "lng": 128.88815,
+      "address": "강원도 강릉시 골말길 42-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-641-5166",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.11149",
+      "name": "휠라키즈",
+      "lat": 37.7536175,
+      "lng": 128.8962654,
+      "address": "강원도 강릉시 신대학길 30-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-641-2004",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040363",
+      "name": "cu강릉경포해변점",
+      "lat": 37.79943572,
+      "lng": 128.9136639,
+      "address": "강원특별자치도 강릉시 창해로 427-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-641-1634",
+      "source": "안전Dream"
+    },
+    {
+      "id": "safedream:50040310",
+      "name": "CU강릉선수촌8단지점",
+      "lat": 37.761507,
+      "lng": 128.8699276,
+      "address": "강원특별자치도 강릉시 선수촌로 115-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.967",
+      "name": "CU강릉신동아점",
+      "lat": 37.7608375,
+      "lng": 128.8994395,
+      "address": "강원도 강릉시 옥천로62번길 14-1",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-642-5906",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040367",
+      "name": "CU강릉아산드림점",
+      "lat": 37.81688521,
+      "lng": 128.8561975,
+      "address": "강원특별자치도 강릉시 방동길 35-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033--",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8898",
+      "name": "CU강릉터미널점",
+      "lat": 37.7552405,
+      "lng": 128.8793647,
+      "address": "강원도 강릉시 하슬라로 22-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-642-9427",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50040364",
+      "name": "CU경포하나점",
+      "lat": 37.80467376,
+      "lng": 128.9038889,
+      "address": "강원특별자치도 강릉시 해안로 513-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-644-2585",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.995",
+      "name": "CU교항점",
+      "lat": 37.8807021,
+      "lng": 128.8263922,
+      "address": "강원도 강릉시 연주로 316-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-661-3773",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1129",
+      "name": "CU안목해오름점",
+      "lat": 37.7710819,
+      "lng": 128.9488484,
+      "address": "강원도 강릉시 창해로14번길 42-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-653-7965",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.994",
+      "name": "CU연곡곡부영점",
+      "lat": 37.8696184,
+      "lng": 128.841851,
+      "address": "강원도 강릉시 영진3길 45-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-661-0677",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.999",
+      "name": "CU정동진으뜸점",
+      "lat": 37.6905523,
+      "lng": 129.0321335,
+      "address": "강원도 강릉시 헌화로 1096-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-644-3607",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.10504",
+      "name": "GS25 강릉강동점",
+      "lat": 37.73447587,
+      "lng": 128.9682484,
+      "address": "강원도 강릉시 강변로410번길 38-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-647-4657",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50036078",
+      "name": "GS25강릉신도점",
+      "lat": 37.77563271,
+      "lng": 128.9384679,
+      "address": "강원특별자치도 강릉시 경강로2539번길 22-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.1128",
+      "name": "GS25강릉이편한점",
+      "lat": 37.7700373,
+      "lng": 128.8946361,
+      "address": "강원도 강릉시 가작로 175-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-655-5004",
+      "source": "국토교통부"
+    },
+    {
+      "id": "safedream:50045974",
+      "name": "GS25강릉한내들점",
+      "lat": 37.759437,
+      "lng": 128.8687349,
+      "address": "강원특별자치도 강릉시 선수촌로 93-0",
+      "categoryName": "아동안전지킴이집",
+      "source": "안전Dream"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.12265",
+      "name": "GS25노암점",
+      "lat": 37.7449004,
+      "lng": 128.8968184,
+      "address": "강원도 강릉시 임영로 28-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-646-7868",
+      "source": "국토교통부"
+    },
+    {
+      "id": "vworld:LT_P_MGPRTFA.8897",
+      "name": "GS교동주공점",
+      "lat": 37.7673545,
+      "lng": 128.8836055,
+      "address": "강원도 강릉시 가작로 78-0",
+      "categoryName": "아동안전지킴이집",
+      "phone": "033-645-1040",
+      "source": "국토교통부"
+    }
+  ]
+}

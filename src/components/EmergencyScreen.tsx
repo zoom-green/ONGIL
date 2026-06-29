@@ -32,8 +32,9 @@ function createAlarm(): () => void {
 }
 
 export default function EmergencyScreen({ guardianPhones, currentLocation, trigger = 'sos', onClose }: Props) {
+  const isSecretTrigger = trigger === 'secret';
   const [countdown, setCountdown] = useState(5);
-  const [triggered, setTriggered] = useState(false);
+  const [triggered, setTriggered] = useState(isSecretTrigger);
   const [smsSent, setSmsSent] = useState(false);
   const triggeredRef = useRef(false);
   const stopAlarmRef = useRef<() => void>(() => {});
@@ -46,7 +47,6 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, trigg
   const mapsLink = locationRef.current
     ? `https://maps.google.com/?q=${locationRef.current.lat},${locationRef.current.lng}`
     : '위치 확인 중';
-  const isSecretTrigger = trigger === 'secret';
   const smsMsg = isSecretTrigger
     ? `🚨 [온길 긴급] 사용자의 긴급 암호가 감지되었습니다.\n현재 위치: ${mapsLink}\n위급 상황일 수 있습니다. 즉시 연락하거나 112에 신고해주세요.`
     : `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
@@ -85,12 +85,6 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, trigg
     sendGuardianSMSAll(validGuardians, smsMsg);
   }, [smsSent, validGuardians, smsMsg]);
 
-  useEffect(() => {
-    if (!isSecretTrigger || smsSent || validGuardians.length === 0) return;
-    setSmsSent(true);
-    sendGuardianSMSAll(validGuardians, smsMsg);
-  }, [isSecretTrigger, smsSent, validGuardians, smsMsg]);
-
   const handleCancel = () => {
     stopAlarmRef.current();
     onClose();
@@ -112,7 +106,7 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, trigg
       <div style={{ textAlign: 'center', flexShrink: 0 }}>
         <div style={{ fontSize: '56px', marginBottom: '10px' }}>🚨</div>
         <div style={{ fontSize: '24px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-          {triggered ? '신고 완료' : '긴급 신고'}
+          {triggered ? (isSecretTrigger ? '긴급 모드' : '신고 완료') : '긴급 신고'}
         </div>
         <div style={{ fontSize: '13px', color: '#FCA5A5', marginTop: '5px' }}>
           {isSecretTrigger ? '긴급 암호가 감지됐어요' : 'SOS 버튼을 눌렀어요'}
@@ -217,15 +211,15 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, trigg
               </div>
               <button
                 onClick={sendSMS}
-                disabled={smsSent}
+                disabled={smsSent || validGuardians.length === 0}
                 style={{
                   width: '100%', background: smsSent ? 'rgba(59,130,246,0.4)' : '#3B82F6',
                   color: '#fff', borderRadius: '10px', padding: '10px 8px',
                   fontSize: '13px', fontWeight: 800, border: 'none',
-                  cursor: smsSent ? 'default' : 'pointer', marginTop: '4px',
+                  cursor: smsSent || validGuardians.length === 0 ? 'default' : 'pointer', marginTop: '4px',
                 }}
               >
-                {smsSent ? '✅ 발송 완료' : '💬 문자 보내기'}
+                {smsSent ? '✅ 발송 완료' : validGuardians.length === 0 ? '보호자 없음' : '💬 문자 보내기'}
               </button>
             </div>
           </div>

@@ -2,7 +2,12 @@ import type { ChildSafeHousePoint } from '../types';
 
 const CACHE_KEY = 'ongil_child_safe_houses_v1';
 const KAKAO_REST_KEY = import.meta.env.VITE_KAKAO_REST_KEY as string | undefined;
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+const API_BASE_URL = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.VITE_API_BASE as string | undefined) ??
+  ''
+).replace(/\/$/, '');
+const STATIC_FALLBACK_URL = '/data/child-safe-houses-gangneung.json';
 
 interface KakaoKeywordItem {
   id?: string;
@@ -12,6 +17,18 @@ interface KakaoKeywordItem {
   phone?: string;
   x?: string;
   y?: string;
+}
+
+function isChildSafeHousePoint(item: unknown): item is ChildSafeHousePoint {
+  if (!item || typeof item !== 'object') return false;
+  const point = item as Partial<ChildSafeHousePoint>;
+  return (
+    Number.isFinite(Number(point.lat)) &&
+    Number.isFinite(Number(point.lng)) &&
+    typeof point.name === 'string' &&
+    typeof point.address === 'string' &&
+    typeof point.categoryName === 'string'
+  );
 }
 
 function readCachedChildSafeHouses(): ChildSafeHousePoint[] {
@@ -89,6 +106,18 @@ async function fetchKakaoFallback(): Promise<ChildSafeHousePoint[]> {
   return mergeChildSafeHouses(results.flatMap((result) => result.status === 'fulfilled' ? result.value : []));
 }
 
+async function fetchStaticFallback(): Promise<ChildSafeHousePoint[]> {
+  try {
+    const res = await fetch(STATIC_FALLBACK_URL, { cache: 'force-cache' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    return mergeChildSafeHouses(items.filter(isChildSafeHousePoint));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchChildSafeHouses(): Promise<ChildSafeHousePoint[]> {
   try {
     const res = await fetch(`${API_BASE_URL}/api/child-safe-houses`);
@@ -102,6 +131,12 @@ export async function fetchChildSafeHouses(): Promise<ChildSafeHousePoint[]> {
     }
   } catch {
     // Native mobile builds do not have a local /api server; fall back below.
+  }
+
+  const staticItems = await fetchStaticFallback();
+  if (staticItems.length > 0) {
+    writeCachedChildSafeHouses(staticItems);
+    return staticItems;
   }
 
   const fallbackItems = await fetchKakaoFallback();

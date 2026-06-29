@@ -14,7 +14,7 @@ import { loadCctvData } from './utils/cctv';
 import { loadStreetlightData } from './utils/streetlight';
 import { fetchSafeSpots, fetchSafeSpotsInBounds } from './utils/kakaoLocal';
 import { fetchChildSafeHouses } from './utils/childSafeHouses';
-import { pickBestRoute, distanceMeters, minDistToRoute, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
+import { pickBestRoute, distanceMeters, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
 import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
 import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
@@ -40,7 +40,6 @@ const MAP_TOGGLE_FEATURES = SAFETY_FEATURES.filter((feature) => feature.id !== '
 type AppStep = 'search' | 'routes';
 
 interface SafetySettings {
-  shareIntervalMinutes: 2 | 4 | 8;
   emergencyPhrase: string;
 }
 
@@ -51,13 +50,11 @@ function formatRouteTime(seconds: number): string {
 
 function loadSafetySettings(): SafetySettings {
   const fallback: SafetySettings = {
-    shareIntervalMinutes: 4,
     emergencyPhrase: '',
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '');
     return {
-      shareIntervalMinutes: parsed?.shareIntervalMinutes === 2 || parsed?.shareIntervalMinutes === 8 ? parsed.shareIntervalMinutes : 4,
       emergencyPhrase: typeof parsed?.emergencyPhrase === 'string' ? parsed.emergencyPhrase : '',
     };
   } catch {
@@ -133,10 +130,6 @@ export default function App() {
 
   const [guardianPhones, setGuardianPhones] = useState<[string, string]>(loadGuardianPhones);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [walkStarted, setWalkStarted] = useState(false);
-  const [routeStatus, setRouteStatus] = useState<'idle' | 'onRoute' | 'offRoute'>('idle');
-  const [sharePrompt, setSharePrompt] = useState<{ message: string; createdAt: number } | null>(null);
-  const lastSharePromptRef = useRef<number>(0);
   const kakaoSearchKeyRef = useRef('');
   const childSafeHouseFetchAttemptedRef = useRef(false);
 
@@ -173,7 +166,6 @@ export default function App() {
     if (userLocation) {
       const loc: LatLng = { lat: userLocation.lat, lng: userLocation.lng };
       setGpsOrigin(loc);
-      if (walkStarted) setUserPos(loc);
       // 吏?以묒떖??꾩쭅 媛뺣쫱 湲곕낯媛믪씠硫?泥?GPS 醫뚰몴濡?ㅻ깄
       setUserPos((prev) =>
         prev.lat === GANGNEUNG_CENTER.lat && prev.lng === GANGNEUNG_CENTER.lng ? loc : prev
@@ -182,7 +174,7 @@ export default function App() {
       // GPS 沅뚰븳 嫄곕? ??ㅽ뙣 ?媛뺣쫱 ?쇳꽣 ?대갚
       setGpsOrigin(GANGNEUNG_CENTER);
     }
-  }, [userLocation, locationReady, walkStarted]);
+  }, [userLocation, locationReady]);
 
   // CCTV + 媛濡쒕벑 ?곗씠?濡쒕뱶
   useEffect(() => {
@@ -360,11 +352,7 @@ export default function App() {
         setSafeRoute(sr);
         setActiveRoute('safe');
         setLockedOrigin(effectiveOrigin);
-        setWalkStarted(false);
-        setRouteStatus('idle');
-        setSharePrompt(null);
         setRoutesPanelCollapsed(false);
-        lastSharePromptRef.current = 0;
       } catch (e) {
         console.error(e);
         setError('경로를 불러오지 못했습니다. API 키 또는 네트워크를 확인해 주세요.');
@@ -374,20 +362,6 @@ export default function App() {
     },
     [effectiveOrigin, cctvList, streetlightData, viewportSafeSpots, gyodongFoodPoints, lifeSafetyPoints, childSafeHouses]
   );
-
-  const handleStartWalk = () => {
-    setWalkStarted(true);
-    setSharePrompt(null);
-    lastSharePromptRef.current = Date.now();
-    if (userLocation) setUserPos({ lat: userLocation.lat, lng: userLocation.lng });
-  };
-
-  const handleShareLocation = () => {
-    const valid = guardianPhones.filter((phone) => phone.trim());
-    if (!sharePrompt || valid.length === 0) return;
-    sendGuardianSMSAll(valid, sharePrompt.message);
-    setSharePrompt(null);
-  };
 
   const handleMapClick = useCallback((pos: { lat: number; lng: number }, address: string) => {
     setMapClickInfo({ ...pos, address });
@@ -415,11 +389,6 @@ export default function App() {
     setMapClickInfo(null);
     handleDestinationSelect(place);
   }, [mapClickInfo, handleDestinationSelect]);
-
-  const activeNodes = useMemo(() => {
-    const route = activeRoute === 'safe' ? safeRoute : fastRoute;
-    return route?.nodes ?? [];
-  }, [safeRoute, fastRoute, activeRoute]);
 
   const hasVisibleFeature = useMemo(
     () => Object.values(visibleFeatures).some(Boolean),
@@ -568,34 +537,6 @@ export default function App() {
     showOverlays,
     visibleFeatures,
   ]);
-
-  useEffect(() => {
-    if (!walkStarted || !userLocation || activeNodes.length === 0) {
-      if (!walkStarted) setRouteStatus('idle');
-      return;
-    }
-    const dist = minDistToRoute(userLocation, activeNodes);
-    setRouteStatus(dist > 50 ? 'offRoute' : 'onRoute');
-  }, [walkStarted, userLocation, activeNodes]);
-
-  useEffect(() => {
-    if (!walkStarted || !userLocation || activeNodes.length === 0) return;
-    const valid = guardianPhones.filter((phone) => phone.trim());
-    if (valid.length === 0) return;
-    const now = Date.now();
-    const intervalMs = safetySettings.shareIntervalMinutes * 60 * 1000;
-    if (lastSharePromptRef.current && now - lastSharePromptRef.current < intervalMs) return;
-
-    const dist = minDistToRoute(userLocation, activeNodes);
-    const statusText = dist > 50
-      ? `경로를 벗어났습니다. 경로에서 약 ${Math.round(dist)}m 떨어졌습니다.`
-      : '경로를 따라 이동 중입니다.';
-    const mapsLink = `https://maps.google.com/?q=${userLocation.lat.toFixed(5)},${userLocation.lng.toFixed(5)}`;
-    const routeName = activeRoute === 'safe' ? '안심길' : '빠른길';
-    const message = `[ON:길 위치공유]\n${routeName} 이동 중\n${destination ? `목적지: ${destination.name}\n` : ""}상태: ${statusText}\n현재 위치: ${mapsLink}`;
-    lastSharePromptRef.current = now;
-    setSharePrompt({ message, createdAt: now });
-  }, [walkStarted, userLocation, activeNodes, guardianPhones, safetySettings.shareIntervalMinutes, activeRoute, destination]);
 
   const activePanelRoute = activeRoute === 'safe' ? safeRoute : fastRoute;
   const canShowRoutePanel = step === 'routes' && !loading && companionDisplay === 'hidden';
@@ -787,43 +728,6 @@ export default function App() {
             boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
           }}>
             {childSafeHouseError}
-          </div>
-        )}
-
-        {/* 吏??대┃ ?출발吏/도착吏 ?ㅼ젙 諛뷀?쒗듃 */}
-        {sharePrompt && (
-          <div style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            right: 12,
-            zIndex: 32,
-            background: '#ECFDF5',
-            border: '1px solid #86EFAC',
-            borderRadius: '12px',
-            padding: '12px',
-            boxShadow: '0 6px 18px rgba(15,23,42,0.16)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: '#047857' }}>보호자에게 위치 공유 시간이 됐습니다</div>
-                <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
-                  {routeStatus === 'offRoute' ? '경로 이탈 상태가 함께 전달돼요.' : '경로를 따라 이동 중인 상태가 함께 전달돼요.'}
-                </div>
-              </div>
-              <button
-                onClick={handleShareLocation}
-                style={{ border: 0, background: '#059669', color: '#fff', borderRadius: 10, padding: '9px 11px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
-              >
-                문자 보내기
-              </button>
-              <button
-                onClick={() => setSharePrompt(null)}
-                style={{ border: 0, background: '#D1FAE5', color: '#047857', borderRadius: 10, width: 32, height: 32, fontSize: 18, cursor: 'pointer' }}
-              >
-                ×
-              </button>
-            </div>
           </div>
         )}
 
@@ -1093,8 +997,6 @@ export default function App() {
                     active={activeRoute === 'safe'}
                     onClick={() => {
                       setActiveRoute('safe');
-                      setWalkStarted(false);
-                      setRouteStatus('idle');
                     }}
                   />
                 )}
@@ -1105,33 +1007,8 @@ export default function App() {
                     active={activeRoute === 'fast'}
                     onClick={() => {
                       setActiveRoute('fast');
-                      setWalkStarted(false);
-                      setRouteStatus('idle');
                     }}
                   />
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
-                <button
-                  onClick={handleStartWalk}
-                  disabled={walkStarted}
-                  style={{
-                    flex: 1,
-                    height: 40,
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: walkStarted ? '#E2E8F0' : '#1E3A5F',
-                    color: walkStarted ? '#64748B' : '#fff',
-                    fontWeight: 900,
-                    cursor: walkStarted ? 'default' : 'pointer',
-                  }}
-                >
-                  {walkStarted ? '이동 추적 중' : '이동 시작'}
-                </button>
-                {walkStarted && (
-                  <div style={{ minWidth: 104, textAlign: 'center', fontSize: '11px', fontWeight: 900, color: routeStatus === 'offRoute' ? '#DC2626' : '#059669' }}>
-                    {routeStatus === 'offRoute' ? '경로 이탈' : '경로 따라 이동'}
-                  </div>
                 )}
               </div>
             </>
