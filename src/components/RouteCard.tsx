@@ -90,6 +90,7 @@ export default function RouteCard({ type, route, active, onClick, fastRoute }: P
   const bgActive = isSafe ? '#EDF5F1' : '#FFF7ED';
   const label = isSafe ? '안심길' : '빠른길';
   const desc = isSafe ? '현재 구간에서 가장 안전한 경로로 안내합니다' : '가장 짧은 거리 기준';
+  const routeIcon = isSafe ? 'route-safe-icon.png' : 'route-fast-icon.png';
   const delta = isSafe ? formatDelta(route, fastRoute) : null;
   const tier2Features = TIER2_FEATURES
     .map((id) => ({ id, count: getFeatureCount(route, id) }))
@@ -118,17 +119,21 @@ export default function RouteCard({ type, route, active, onClick, fastRoute }: P
             width: 32,
             height: 32,
             borderRadius: 10,
-            background: isSafe ? '#4F6F64' : '#E5E7EB',
-            color: isSafe ? '#fff' : '#D97745',
+            background: 'transparent',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 16,
-            fontWeight: 900,
             flexShrink: 0,
+            overflow: 'hidden',
           }}
         >
-          {isSafe ? '안' : '빠'}
+          <img
+            src={`/icons/${routeIcon}`}
+            width="32"
+            height="32"
+            style={{ display: 'block', width: 32, height: 32, objectFit: 'contain' }}
+            alt=""
+          />
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -150,26 +155,30 @@ export default function RouteCard({ type, route, active, onClick, fastRoute }: P
       </div>
 
       {isSafe && (
-        <div style={{
-          marginTop: 9,
-          paddingTop: 8,
-          borderTop: '1px solid rgba(79,111,100,0.18)',
-          color: '#4F6F64',
-          overflow: 'hidden',
-        }}>
+        <div
+          style={{
+            marginTop: 9,
+            paddingTop: 8,
+            borderTop: '1px solid rgba(79,111,100,0.18)',
+            color: '#4F6F64',
+            overflow: 'hidden',
+          }}
+        >
           <div style={{ display: 'flex', gap: 12, fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap' }}>
             <span>CCTV {route.cctvCount}</span>
             <span>안전거점 {route.tier2Count ?? route.safeSpotCount}</span>
           </div>
           {tier2Features.length > 0 && (
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '5px 10px',
-              marginTop: 6,
-              maxHeight: 40,
-              overflow: 'hidden',
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '5px 10px',
+                marginTop: 6,
+                maxHeight: 40,
+                overflow: 'hidden',
+              }}
+            >
               {tier2Features.map((item) => (
                 <FeaturePill key={item.id} id={item.id} count={item.count} />
               ))}

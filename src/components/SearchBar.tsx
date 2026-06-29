@@ -197,9 +197,11 @@ export default function SearchBar({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           style={{
-            width: '100%', padding: '9px 34px 9px 12px', fontSize: '14px',
-            border: '1.5px solid #E5E7EB', borderRadius: '10px', outline: 'none',
-            boxSizing: 'border-box', background: '#F9FAFB', color: '#111827',
+            width: '100%', padding: '11px 38px 11px 14px', fontSize: '14px',
+            border: '1.5px solid #DDE6EF', borderRadius: '16px', outline: 'none',
+            boxSizing: 'border-box', background: '#fff', color: '#111827',
+            boxShadow: '0 4px 14px rgba(15,23,42,0.05)',
+            fontWeight: 700,
           }}
         />
         {/* 로딩 스피너 / 검색 아이콘 */}
@@ -224,9 +226,9 @@ export default function SearchBar({
       {open && (
         <ul style={{
           position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff',
-          border: '1px solid #E5E7EB', borderRadius: '10px', marginTop: '4px',
+          border: '1px solid #DDE6EF', borderRadius: '14px', marginTop: '6px',
           padding: 0, listStyle: 'none', zIndex: 9999,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          boxShadow: '0 14px 34px rgba(15,23,42,0.14)',
           maxHeight: '280px', overflowY: 'auto',
         }}>
           {results.length === 0 ? (

@@ -618,28 +618,28 @@ export default function App() {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#F8FAFC', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", background: '#EEF4F1', position: 'relative', overflow: 'hidden' }}>
 
       {/* 헤더 */}
-      <div style={{ background: '#fff', padding: '10px 12px 8px', borderBottom: '1px solid #F1F5F9', zIndex: 10, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ background: 'rgba(255,255,255,0.96)', padding: '12px 14px 10px', borderBottom: '1px solid rgba(226,232,240,0.9)', zIndex: 10, flexShrink: 0, boxShadow: '0 8px 24px rgba(15,23,42,0.06)', backdropFilter: 'blur(12px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: '#1E3A5F' }}>ON:吉 온길</div>
-            <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '1px' }}>강릉 야간 안심 이동 서비스</div>
+            <div style={{ fontSize: '19px', fontWeight: 950, color: '#17375E', lineHeight: 1.05 }}>ON:吉 온길</div>
+            <div style={{ fontSize: '11px', color: '#8A9AAD', marginTop: '4px', fontWeight: 700 }}>강릉 야간 안심 이동 서비스</div>
           </div>
           <button
             onClick={() => setShowSettingsModal(true)}
             style={{
               marginLeft: 'auto',
-              fontSize: '12px',
-              padding: '7px 12px',
+              fontSize: '13px',
+              padding: '10px 15px',
               borderRadius: '999px',
-              border: '1px solid rgba(30,58,95,0.12)',
-              background: 'linear-gradient(135deg, #1E3A5F, #2563EB)',
+              border: '1px solid rgba(37,99,235,0.24)',
+              background: 'linear-gradient(135deg, #1B4A8E, #2563EB)',
               color: '#fff',
               cursor: 'pointer',
               fontWeight: 900,
-              boxShadow: '0 8px 18px rgba(37,99,235,0.24)',
+              boxShadow: '0 10px 22px rgba(37,99,235,0.25)',
               lineHeight: 1,
             }}
           >
@@ -650,10 +650,10 @@ export default function App() {
         {!locationReady ? (
           <div style={{ textAlign: 'center', padding: '10px', color: '#94A3B8', fontSize: '13px' }}>위치 확인 중...</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {/* 출발吏 ?*/}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '10px', color: '#6B7280', fontWeight: 600, minWidth: '26px' }}>출발</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#526071', fontWeight: 900, minWidth: '30px' }}>출발</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`origin-${step}-${Boolean(manualOrigin)}`}
@@ -667,15 +667,15 @@ export default function App() {
                 <button
                   onClick={handleOriginReset}
                   title="현재 위치로 초기화"
-                  style={{ padding: '7px 8px', borderRadius: '8px', border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
+                  style={{ padding: '10px 11px', borderRadius: '13px', border: '1px solid #DCE5EF', background: '#fff', cursor: 'pointer', fontSize: '12px', lineHeight: 1, color: '#2563EB', fontWeight: 900, boxShadow: '0 4px 12px rgba(15,23,42,0.06)' }}
                 >
                   GPS
                 </button>
               )}
             </div>
             {/* 紐⑹쟻吏 ?*/}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '10px', color: '#6B7280', fontWeight: 600, minWidth: '26px' }}>도착</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#526071', fontWeight: 900, minWidth: '30px' }}>도착</span>
               <div style={{ flex: 1 }}>
                 <SearchBar
                   key={`dest-${step}`}
@@ -690,7 +690,7 @@ export default function App() {
         )}
 
         {showOverlays && (
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingTop: '8px', paddingBottom: 1 }}>
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingTop: '10px', paddingBottom: 2, scrollbarWidth: 'none' }}>
             {MAP_TOGGLE_FEATURES.map((feature) => {
               const active = visibleFeatures[feature.id];
               return (
@@ -699,17 +699,19 @@ export default function App() {
                   onClick={() => toggleVisibleFeature(feature.id)}
                   style={{
                     flex: '0 0 auto',
-                    border: 0,
-                    background: 'transparent',
-                    color: active ? '#111827' : '#64748B',
-                    padding: '2px 0',
+                    border: `1px solid ${active ? `${feature.color}55` : '#E3E9F0'}`,
+                    borderRadius: 999,
+                    background: active ? `${feature.color}14` : '#F8FAFC',
+                    color: active ? '#111827' : '#6B7788',
+                    padding: '5px 9px 5px 6px',
                     fontSize: '11px',
-                    fontWeight: 800,
+                    fontWeight: 900,
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 5,
+                    gap: 7,
+                    boxShadow: active ? '0 6px 14px rgba(15,23,42,0.08)' : 'none',
                   }}
                 >
                   <SafetyMarkerBadge feature={feature} active={active} size={28} />
@@ -932,11 +934,11 @@ export default function App() {
               onClick={triggerSOSByButton}
               style={{
                 width: '72px', height: '72px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, #DC2626, #7F1D1D)',
-                border: 'none', color: '#fff',
+                background: 'linear-gradient(145deg, #D72727, #991B1B)',
+                border: '1px solid rgba(255,255,255,0.35)', color: '#fff',
                 fontSize: '20px', fontWeight: 900, letterSpacing: '1px',
                 cursor: 'pointer',
-                boxShadow: '0 4px 24px rgba(220,38,38,0.7)',
+                boxShadow: '0 14px 34px rgba(153,27,27,0.34)',
                 position: 'relative', zIndex: 1,
                 fontFamily: "'Apple SD Gothic Neo','Noto Sans KR',sans-serif",
               }}
@@ -952,11 +954,11 @@ export default function App() {
             onClick={() => setShowPersonaModal(true)}
             style={{
               position: 'absolute', bottom: '20px', right: '16px', zIndex: 15,
-              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-              color: '#fff', border: 'none', borderRadius: '24px',
-              padding: '12px 18px', fontSize: '14px', fontWeight: 700,
+              background: 'linear-gradient(135deg, #6D38E8, #4F46E5)',
+              color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: '999px',
+              padding: '13px 18px', fontSize: '14px', fontWeight: 900,
               cursor: 'pointer',
-              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              boxShadow: '0 14px 28px rgba(79,70,229,0.28)',
               display: 'flex', alignItems: 'center', gap: '6px',
               fontFamily: "'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
             }}
@@ -973,14 +975,14 @@ export default function App() {
               right: 16,
               bottom: 90,
               zIndex: 24,
-              border: 'none',
+              border: '1px solid rgba(255,255,255,0.2)',
               borderRadius: 999,
-              background: '#111827',
+              background: 'rgba(15,23,42,0.92)',
               color: '#fff',
               padding: '10px 14px',
               fontSize: 12,
               fontWeight: 900,
-              boxShadow: '0 8px 22px rgba(15,23,42,0.26)',
+              boxShadow: '0 14px 30px rgba(15,23,42,0.24)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -1088,19 +1090,19 @@ export default function App() {
 
       {/* 寃쎈줈 移대뱶 ?⑤꼸 ??숉뻾 以묒뿉??④? */}
       {canShowRoutePanel && !routesPanelCollapsed && (
-        <div style={{ background: '#fff', padding: '10px 12px 12px', borderTop: '1px solid #F1F5F9', flexShrink: 0, boxShadow: '0 -4px 20px rgba(0,0,0,0.06)' }}>
+        <div style={{ background: 'rgba(255,255,255,0.98)', padding: '12px 14px 14px', borderTop: '1px solid rgba(226,232,240,0.9)', borderRadius: '20px 20px 0 0', flexShrink: 0, boxShadow: '0 -14px 36px rgba(15,23,42,0.10)', backdropFilter: 'blur(12px)' }}>
           {error ? (
             <div style={{ textAlign: 'center', padding: '12px', color: '#EF4444', fontSize: '13px', background: '#FEF2F2', borderRadius: '12px' }}>{error}</div>
           ) : (safeRoute || fastRoute) ? (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '8px' }}>
-                <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: '#6B7280', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '10px' }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: '#64748B', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {destination?.name}까지의 경로
                 </div>
                 <button
                   onClick={() => setRoutesPanelCollapsed(true)}
                   style={{
-                    border: '1px solid #E5E7EB',
+                    border: '1px solid #DDE6EF',
                     background: '#F8FAFC',
                     color: '#475569',
                     borderRadius: 999,

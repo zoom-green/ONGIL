@@ -30,6 +30,10 @@ export interface DarkZone {
 }
 
 export interface RouteSafetyScore {
+  safetyScore: number;
+  tier1ContinuityScore: number;
+  tier2CountScore: number;
+  tier2RawCount: number;
   darkZoneCount: number;
   tier2Count: number;
   distanceMeters: number;

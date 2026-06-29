@@ -17,7 +17,10 @@ const TIER1_THRESHOLDS_M: Record<Tier1ElementType, number> = {
   streetlight: 30,
   CCTV: 50,
 };
+const TIER1_WEIGHT = 0.7;
+const TIER2_WEIGHT = 0.3;
 const TIER2_ROUTE_RADIUS_M = 30;
+const TIER2_SATURATION = 15;
 const DAY_KEYS: WeekdayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 const TIER1_TYPES = new Set<SafetyElementType>(['CCTV', 'streetlight']);
@@ -263,19 +266,65 @@ export function countTier2NearRoute(
   return counted.size;
 }
 
+export function tier1Coverage(
+  polyline: LatLng[],
+  elements: SafetyElement[],
+  type: Tier1ElementType,
+  maxGapMeters: number
+): number {
+  const routeLength = routeLengthMeters(polyline);
+  if (polyline.length < 2 || routeLength <= 0) return 0;
+
+  const positions = projectTier1(polyline, elements).get(type) ?? [];
+  if (positions.length === 0) return 0;
+
+  const checkpoints = [0, ...positions, routeLength]
+    .filter((value, index, all) => index === 0 || Math.abs(value - all[index - 1]) > 0.01);
+  let coveredLength = 0;
+
+  for (let index = 1; index < checkpoints.length; index += 1) {
+    const gap = checkpoints[index] - checkpoints[index - 1];
+    if (gap <= maxGapMeters) coveredLength += gap;
+  }
+
+  return Math.max(0, Math.min(1, coveredLength / routeLength));
+}
+
+export function tier1ContinuityScore(
+  polyline: LatLng[],
+  elements: SafetyElement[]
+): number {
+  const streetlightCoverage = tier1Coverage(polyline, elements, 'streetlight', TIER1_THRESHOLDS_M.streetlight);
+  const cctvCoverage = tier1Coverage(polyline, elements, 'CCTV', TIER1_THRESHOLDS_M.CCTV);
+  return (streetlightCoverage + cctvCoverage) / 2;
+}
+
+export function tier2CountScore(
+  polyline: LatLng[],
+  elements: SafetyElement[]
+): number {
+  return Math.min(countTier2NearRoute(polyline, elements) / TIER2_SATURATION, 1);
+}
+
 export function scoreRoute(polyline: LatLng[], elements: SafetyElement[]): RouteSafetyScore {
+  const tier1Score = tier1ContinuityScore(polyline, elements);
+  const tier2RawCount = countTier2NearRoute(polyline, elements);
+  const normalizedTier2Score = Math.min(tier2RawCount / TIER2_SATURATION, 1);
   const darkZones = findDarkZones(polyline, elements);
   return {
+    safetyScore: (TIER1_WEIGHT * tier1Score) + (TIER2_WEIGHT * normalizedTier2Score),
+    tier1ContinuityScore: tier1Score,
+    tier2CountScore: normalizedTier2Score,
+    tier2RawCount,
     darkZoneCount: darkZones.length,
-    tier2Count: countTier2NearRoute(polyline, elements),
+    tier2Count: tier2RawCount,
     distanceMeters: routeLengthMeters(polyline),
     darkZones,
   };
 }
 
 export function compareRouteSafety(a: RouteSafetyScore, b: RouteSafetyScore): number {
-  if (a.darkZoneCount !== b.darkZoneCount) return a.darkZoneCount - b.darkZoneCount;
-  if (a.tier2Count !== b.tier2Count) return b.tier2Count - a.tier2Count;
+  if (a.safetyScore !== b.safetyScore) return b.safetyScore - a.safetyScore;
   return a.distanceMeters - b.distanceMeters;
 }
 
@@ -323,7 +372,7 @@ export function scoreRouteCandidate(
   const featureCounts = countFeaturesNearRoute(route.nodes, elements);
   return {
     ...route,
-    safetyScore: -score.darkZoneCount,
+    safetyScore: score.safetyScore,
     cctvCount: featureCounts.cctv ?? 0,
     safeSpotCount: score.tier2Count,
     featureCounts,
@@ -341,6 +390,10 @@ export function pickSafestRouteCandidate(candidates: RouteCandidate[], elements:
 
 function routeCandidateScore(route: RouteCandidate): RouteSafetyScore {
   return {
+    safetyScore: route.safetyScore,
+    tier1ContinuityScore: 0,
+    tier2CountScore: 0,
+    tier2RawCount: route.tier2Count ?? route.safeSpotCount,
     darkZoneCount: route.darkZoneCount ?? 0,
     tier2Count: route.tier2Count ?? route.safeSpotCount,
     distanceMeters: route.totalDistance,
