@@ -6,9 +6,29 @@ export type RealtimePhase = 'idle' | 'connecting' | 'listening' | 'speaking';
 interface UseRealtimeCompanionOptions {
   persona: Persona;
   onEnd: () => void;
+  onUserTranscript?: (text: string) => void;
 }
 
-export function useRealtimeCompanion({ persona, onEnd }: UseRealtimeCompanionOptions) {
+function extractTranscript(event: unknown): string | null {
+  if (!event || typeof event !== 'object') return null;
+  const message = event as {
+    type?: string;
+    transcript?: unknown;
+    item?: { content?: Array<{ transcript?: unknown; text?: unknown }> };
+  };
+  if (message.type === 'conversation.item.input_audio_transcription.completed' && typeof message.transcript === 'string') {
+    return message.transcript;
+  }
+  const content = message.item?.content;
+  if (!Array.isArray(content)) return null;
+  for (const part of content) {
+    if (typeof part.transcript === 'string') return part.transcript;
+    if (typeof part.text === 'string') return part.text;
+  }
+  return null;
+}
+
+export function useRealtimeCompanion({ persona, onEnd, onUserTranscript }: UseRealtimeCompanionOptions) {
   const [phase, setPhase] = useState<RealtimePhase>('idle');
   const [callSecs, setCallSecs] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -20,10 +40,15 @@ export function useRealtimeCompanion({ persona, onEnd }: UseRealtimeCompanionOpt
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const endedRef = useRef(false);
   const onEndRef = useRef(onEnd);
+  const onUserTranscriptRef = useRef(onUserTranscript);
 
   useEffect(() => {
     onEndRef.current = onEnd;
   }, [onEnd]);
+
+  useEffect(() => {
+    onUserTranscriptRef.current = onUserTranscript;
+  }, [onUserTranscript]);
 
   useEffect(() => {
     if (!callStarted) return;
@@ -122,6 +147,8 @@ export function useRealtimeCompanion({ persona, onEnd }: UseRealtimeCompanionOpt
           if (message.type === 'response.audio.delta') setPhase('speaking');
           if (message.type === 'response.audio.done') setPhase('listening');
           if (message.type === 'input_audio_buffer.speech_started') setPhase('listening');
+          const transcript = extractTranscript(message);
+          if (transcript) onUserTranscriptRef.current?.(transcript);
           if (message.type === 'error') {
             setError(message.error?.message ?? 'Realtime 오류가 발생했어요.');
           }

@@ -5,8 +5,8 @@ import { sendGuardianSMSAll } from '../utils/sms';
 interface Props {
   guardianPhones: string[];
   currentLocation: { lat: number; lng: number } | null;
+  trigger?: 'sos' | 'secret';
   onClose: () => void;
-  trigger?: 'sos' | 'shake';
 }
 
 function createAlarm(): () => void {
@@ -31,7 +31,7 @@ function createAlarm(): () => void {
   }
 }
 
-export default function EmergencyScreen({ guardianPhones, currentLocation, onClose, trigger = 'shake' }: Props) {
+export default function EmergencyScreen({ guardianPhones, currentLocation, trigger = 'sos', onClose }: Props) {
   const [countdown, setCountdown] = useState(5);
   const [triggered, setTriggered] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
@@ -46,7 +46,10 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
   const mapsLink = locationRef.current
     ? `https://maps.google.com/?q=${locationRef.current.lat},${locationRef.current.lng}`
     : '위치 확인 중';
-  const smsMsg = `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
+  const isSecretTrigger = trigger === 'secret';
+  const smsMsg = isSecretTrigger
+    ? `🚨 [온길 긴급] 사용자의 긴급 암호가 감지되었습니다.\n현재 위치: ${mapsLink}\n위급 상황일 수 있습니다. 즉시 연락하거나 112에 신고해주세요.`
+    : `🚨 [온길 긴급] 위험 상황이 감지되었습니다.\n현재 위치: ${mapsLink}\n경찰(112)에 신고가 접수되었습니다. 즉시 확인해주세요.`;
   const progress = Math.max(0, Math.min(1, countdown / 5));
   const radius = 52;
   const circumference = 2 * Math.PI * radius;
@@ -82,6 +85,12 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
     sendGuardianSMSAll(validGuardians, smsMsg);
   }, [smsSent, validGuardians, smsMsg]);
 
+  useEffect(() => {
+    if (!isSecretTrigger || smsSent || validGuardians.length === 0) return;
+    setSmsSent(true);
+    sendGuardianSMSAll(validGuardians, smsMsg);
+  }, [isSecretTrigger, smsSent, validGuardians, smsMsg]);
+
   const handleCancel = () => {
     stopAlarmRef.current();
     onClose();
@@ -106,7 +115,7 @@ export default function EmergencyScreen({ guardianPhones, currentLocation, onClo
           {triggered ? '신고 완료' : '긴급 신고'}
         </div>
         <div style={{ fontSize: '13px', color: '#FCA5A5', marginTop: '5px' }}>
-          {trigger === 'sos' ? 'SOS 버튼을 눌렀어요' : '핸드폰을 세게 흔들었어요'}
+          {isSecretTrigger ? '긴급 암호가 감지됐어요' : 'SOS 버튼을 눌렀어요'}
         </div>
         {!triggered && (
           <div style={{ fontSize: '12px', color: '#FCD34D', marginTop: '5px' }}>

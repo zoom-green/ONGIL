@@ -81,7 +81,7 @@ export default function GuardianModal({ initialPhones, onSave, onClose }: Props)
             padding: '12px 14px', marginBottom: '20px',
             fontSize: '13px', color: '#64748B', lineHeight: 1.6,
           }}>
-            SOS 버튼을 누르거나 핸드폰을 세게 3번 흔들면<br />
+            SOS 버튼을 누르면<br />
             현재 위치가 담긴 위험 알림이 즉시 전송돼요.
           </div>
 

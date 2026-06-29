@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 interface SafetySettings {
   shareIntervalMinutes: 2 | 4 | 8;
+  emergencyPhrase: string;
 }
 
 interface Props {
@@ -20,10 +21,11 @@ function formatPhone(raw: string): string {
 
 export default function SettingsModal({ initialSettings, initialPhones, onSave, onClose }: Props) {
   const [shareIntervalMinutes, setShareIntervalMinutes] = useState<2 | 4 | 8>(initialSettings.shareIntervalMinutes);
+  const [emergencyPhrase, setEmergencyPhrase] = useState(initialSettings.emergencyPhrase);
   const [phones, setPhones] = useState<[string, string]>(initialPhones);
 
   const save = () => {
-    onSave({ shareIntervalMinutes }, phones);
+    onSave({ shareIntervalMinutes, emergencyPhrase: emergencyPhrase.trim() }, phones);
   };
 
   return (
@@ -54,7 +56,7 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900, color: '#0F172A' }}>설정</div>
-            <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>보호자 연락처와 위치 공유 주기를 관리해요</div>
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>보호자 연락처, 긴급 암호, 위치 공유 주기를 관리해요</div>
           </div>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 0, background: '#F1F5F9', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18 }}>x</button>
         </div>
@@ -86,6 +88,33 @@ export default function SettingsModal({ initialSettings, initialPhones, onSave, 
               }}
             />
           ))}
+        </section>
+
+        <section style={{ border: '1px solid #FECACA', borderRadius: 12, padding: 14, marginBottom: 12, background: '#FFF7F7' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#991B1B', marginBottom: 6 }}>긴급 암호 멘트</div>
+          <div style={{ fontSize: 12, color: '#7F1D1D', lineHeight: 1.5, marginBottom: 10 }}>
+            AI 음성 대화 중 이 말을 하면 통화가 자동 종료되고 SOS 화면으로 전환돼요.
+          </div>
+          <input
+            value={emergencyPhrase}
+            onChange={(event) => setEmergencyPhrase(event.target.value.slice(0, 40))}
+            type="text"
+            placeholder="예: 빨간 우산"
+            style={{
+              width: '100%',
+              height: 44,
+              border: '1.5px solid #FCA5A5',
+              borderRadius: 10,
+              padding: '0 12px',
+              fontSize: 14,
+              outline: 'none',
+              boxSizing: 'border-box',
+              background: '#fff',
+            }}
+          />
+          <div style={{ fontSize: 11, color: '#B91C1C', lineHeight: 1.5, marginTop: 8 }}>
+            최소 한 단어, 최대 한 문장으로 설정해 주세요. 너무 흔한 말은 오작동할 수 있어요.
+          </div>
         </section>
 
         <section style={{ border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, marginBottom: 16 }}>

@@ -74,6 +74,10 @@ function buildRealtimeSession(persona: Persona) {
     instructions: PERSONA_INSTRUCTIONS[persona],
     audio: {
       input: {
+        transcription: {
+          model: 'gpt-4o-mini-transcribe',
+          language: 'ko',
+        },
         turn_detection: {
           type: 'server_vad',
           threshold: 0.78,

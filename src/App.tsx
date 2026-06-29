@@ -16,7 +16,6 @@ import { fetchSafeSpots, fetchSafeSpotsInBounds } from './utils/kakaoLocal';
 import { fetchChildSafeHouses } from './utils/childSafeHouses';
 import { pickBestRoute, distanceMeters, minDistToRoute, isSafetyPointAvailable, collectSelectedRouteSafetyPoints } from './utils/safety';
 import { GANGNEUNG_CCTV_FALLBACK } from './data/cctvFallback';
-import { useShakeDetection } from './hooks/useShakeDetection';
 import { sendGuardianSMSAll, buildGuardianMessage } from './utils/sms';
 import { type Persona, PERSONA_DESCRIPTIONS, PERSONA_EMOJI, PERSONA_LABELS } from './utils/companionPersona';
 import { SAFETY_FEATURES, getSafetyFeature } from './utils/safetyFeatures';
@@ -42,6 +41,7 @@ type AppStep = 'search' | 'routes';
 
 interface SafetySettings {
   shareIntervalMinutes: 2 | 4 | 8;
+  emergencyPhrase: string;
 }
 
 function formatRouteTime(seconds: number): string {
@@ -52,15 +52,23 @@ function formatRouteTime(seconds: number): string {
 function loadSafetySettings(): SafetySettings {
   const fallback: SafetySettings = {
     shareIntervalMinutes: 4,
+    emergencyPhrase: '',
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '');
     return {
       shareIntervalMinutes: parsed?.shareIntervalMinutes === 2 || parsed?.shareIntervalMinutes === 8 ? parsed.shareIntervalMinutes : 4,
+      emergencyPhrase: typeof parsed?.emergencyPhrase === 'string' ? parsed.emergencyPhrase : '',
     };
   } catch {
     return fallback;
   }
+}
+
+function normalizeSecretPhrase(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '');
 }
 
 function loadGuardianPhones(): [string, string] {
@@ -120,7 +128,7 @@ export default function App() {
   const [companionKey, setCompanionKey] = useState(0);
   const companionActive = companionDisplay !== 'hidden';
   const [emergencyActive, setEmergencyActive] = useState(false);
-  const [emergencyTrigger, setEmergencyTrigger] = useState<'sos' | 'shake'>('shake');
+  const [emergencyTrigger, setEmergencyTrigger] = useState<'sos' | 'secret'>('sos');
   const lastSmsLocRef = useRef<LatLng | null>(null);
 
   const [guardianPhones, setGuardianPhones] = useState<[string, string]>(loadGuardianPhones);
@@ -199,13 +207,19 @@ export default function App() {
     setEmergencyActive(true);
   }, []);
 
-  const triggerSOSByShake = useCallback(() => {
-    setEmergencyTrigger('shake');
+  const triggerSOSBySecretPhrase = useCallback(() => {
+    setEmergencyTrigger('secret');
+    setShowPersonaModal(false);
+    setCompanionDisplay('hidden');
     setEmergencyActive(true);
   }, []);
 
-  // ?몃뱶??멸쾶 2踰?붾뱾湲?媛먯? ?SOS
-  useShakeDetection(triggerSOSByShake, true);
+  const handleCompanionTranscript = useCallback((text: string) => {
+    const secret = normalizeSecretPhrase(safetySettings.emergencyPhrase);
+    if (!secret) return;
+    const spoken = normalizeSecretPhrase(text);
+    if (spoken.includes(secret)) triggerSOSBySecretPhrase();
+  }, [safetySettings.emergencyPhrase, triggerSOSBySecretPhrase]);
 
   // ?숉뻾 以?500m留덈떎 蹂댄샇?SMS
   useEffect(() => {
@@ -1037,6 +1051,7 @@ export default function App() {
           displayMode={companionDisplay}
           onDisplayModeChange={setCompanionDisplay}
           onEnd={() => setCompanionDisplay('hidden')}
+          onUserTranscript={handleCompanionTranscript}
         />
       )}
 

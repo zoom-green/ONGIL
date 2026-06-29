@@ -8,6 +8,7 @@ interface Props {
   displayMode: CompanionDisplayMode;
   onDisplayModeChange: (mode: CompanionDisplayMode) => void;
   onEnd: () => void;
+  onUserTranscript?: (text: string) => void;
 }
 
 const PHASE_LABELS: Record<RealtimePhase, string> = {
@@ -29,10 +30,12 @@ export default function CompanionCall({
   displayMode,
   onDisplayModeChange,
   onEnd,
+  onUserTranscript,
 }: Props) {
   const { phase, callSecs, error, callStarted, startCall, endCall, fmt } = useRealtimeCompanion({
     persona,
     onEnd,
+    onUserTranscript,
   });
 
   if (displayMode === 'mini') {
